@@ -103,8 +103,6 @@ To build the project, you will need to reference the following assemblies from y
 - `KKAPI.dll`
 - `Timeline.dll`
 
-**PerspectiveX does not need to be referenced when building.** TimelinePOVSwitchX communicates with PerspectiveX at runtime through reflection.
-
 Then build in Release mode:
 
 ```bash
