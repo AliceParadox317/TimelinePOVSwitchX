@@ -391,7 +391,7 @@ namespace TimelinePOVSwitchX
             pitchLimit = 89f;
             positionSmoothing = 0f;
             forwardOffset = 0f;
-            nearClip = 0.1f;
+            nearClip = 0.01f;
             upOffset = 0f;
 
 

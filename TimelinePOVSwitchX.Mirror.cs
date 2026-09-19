@@ -87,7 +87,6 @@ namespace TimelinePOVSwitchX
             }
             catch
             {
-
                 return null;
             }
         }
@@ -918,9 +917,6 @@ namespace TimelinePOVSwitchX
                     true
                 );
 
-            int changedMaterials =
-                0;
-
             foreach (Renderer renderer in renderers)
             {
                 if (renderer == null)
@@ -934,44 +930,166 @@ namespace TimelinePOVSwitchX
                     if (material == null)
                         continue;
 
-                    bool changed =
-                        false;
-
+                    // MaterialEditor stores property names without the leading
+                    // underscore. Its API applies the Unity property AND records
+                    // the override in MaterialEditor's SceneController so it is
+                    // serialized with the Studio scene.
                     if (material.HasProperty("_AlbedoDetailScale"))
                     {
-                        material.SetFloat(
-                            "_AlbedoDetailScale",
+                        // Apply immediately so the spawned mirror always has
+                        // the requested visual value, independent of persistence.
+                        material.SetFloat("_AlbedoDetailScale", 0f);
+                        SetPersistentMaterialEditorFloat(
+                            mirror,
+                            renderer,
+                            material,
+                            "AlbedoDetailScale",
                             0f
                         );
-                        changed = true;
                     }
 
                     if (material.HasProperty("_ReflectionBlurSigma"))
                     {
-                        material.SetFloat(
-                            "_ReflectionBlurSigma",
+                        material.SetFloat("_ReflectionBlurSigma", 0.0001f);
+                        SetPersistentMaterialEditorFloat(
+                            mirror,
+                            renderer,
+                            material,
+                            "ReflectionBlurSigma",
                             0.0001f
                         );
-                        changed = true;
                     }
 
                     if (material.HasProperty("_ReflectionDistortion"))
                     {
-                        material.SetFloat(
-                            "_ReflectionDistortion",
+                        material.SetFloat("_ReflectionDistortion", 0f);
+                        SetPersistentMaterialEditorFloat(
+                            mirror,
+                            renderer,
+                            material,
+                            "ReflectionDistortion",
                             0f
                         );
-                        changed = true;
                     }
-
-                    if (changed)
-                        changedMaterials++;
                 }
             }
-
         }
 
 
+        private static bool SetPersistentMaterialEditorFloat(
+            OCIItem mirror,
+            Renderer renderer,
+            Material material,
+            string propertyName,
+            float value
+        )
+        {
+            if (mirror == null || mirror.objectItem == null ||
+                renderer == null || material == null ||
+                string.IsNullOrEmpty(propertyName))
+                return false;
+
+            try
+            {
+                BepInEx.PluginInfo plugin;
+                if (!BepInEx.Bootstrap.Chainloader.PluginInfos.TryGetValue(
+                        "com.deathweasel.bepinex.materialeditor", out plugin) ||
+                    plugin == null || plugin.Instance == null)
+                    return false;
+
+                System.Reflection.Assembly assembly =
+                    plugin.Instance.GetType().Assembly;
+
+                System.Type sceneControllerType =
+                    assembly.GetType("KK_Plugins.MaterialEditor.SceneController", false);
+
+                if (sceneControllerType == null)
+                    return false;
+
+                UnityEngine.Object controller =
+                    UnityEngine.Object.FindObjectOfType(sceneControllerType);
+
+                if (controller == null)
+                    return false;
+
+                System.Reflection.MethodInfo[] methods =
+                    sceneControllerType.GetMethods(
+                        System.Reflection.BindingFlags.Public |
+                        System.Reflection.BindingFlags.NonPublic |
+                        System.Reflection.BindingFlags.Instance);
+
+                foreach (System.Reflection.MethodInfo method in methods)
+                {
+                    if (method.Name != "SetMaterialFloatProperty")
+                        continue;
+
+                    System.Reflection.ParameterInfo[] parameters =
+                        method.GetParameters();
+                    object[] args = new object[parameters.Length];
+                    bool compatible = true;
+
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        System.Type pt = parameters[i].ParameterType;
+                        string pn = parameters[i].Name == null
+                            ? ""
+                            : parameters[i].Name.ToLowerInvariant();
+
+                        if (pt == typeof(int))
+                            args[i] = mirror.objectInfo.dicKey;
+                        else if (pt == typeof(GameObject))
+                            args[i] = mirror.objectItem;
+                        else if (pt == typeof(Renderer))
+                            args[i] = renderer;
+                        else if (pt == typeof(Material))
+                            args[i] = material;
+                        else if (pt == typeof(float))
+                            args[i] = value;
+                        else if (pt == typeof(bool))
+                            args[i] = true;
+                        else if (pt == typeof(string))
+                        {
+                            if (pn.IndexOf("property") >= 0)
+                                args[i] = propertyName.TrimStart('_');
+                            else if (pn.IndexOf("material") >= 0)
+                            {
+                                string name = material.name ?? "";
+                                if (name.EndsWith(" (Instance)",
+                                    System.StringComparison.Ordinal))
+                                    name = name.Substring(
+                                        0, name.Length - " (Instance)".Length);
+                                args[i] = name;
+                            }
+                            else if (pn.IndexOf("renderer") >= 0)
+                                args[i] = renderer.name;
+                            else
+                            {
+                                compatible = false;
+                                break;
+                            }
+                        }
+                        else if (parameters[i].IsOptional)
+                            args[i] = parameters[i].DefaultValue;
+                        else
+                        {
+                            compatible = false;
+                            break;
+                        }
+                    }
+
+                    if (!compatible)
+                        continue;
+
+                    method.Invoke(controller, args);
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
 
         // =========================================================
         // TEMPORARY POV MIRROR

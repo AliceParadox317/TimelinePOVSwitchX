@@ -14,9 +14,9 @@ using UnityEngine.UI;
 namespace TimelinePOVSwitchX
 {
     [BepInPlugin(
-        "com.AliceParadox317.TimelinePOVSwitchX",
+        "com.Alice317.TimelinePOVSwitchX",
         "TimelinePOVSwitchX",
-        "1.0.0"
+        "1.0.1"
     )]
     public partial class TimelinePOVSwitchX : BaseUnityPlugin
     {

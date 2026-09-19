@@ -1639,7 +1639,7 @@ namespace TimelinePOVSwitchX
                         pitchLimitInput = pitchLimit.ToString("0.###", CultureInfo.InvariantCulture);
                         positionSmoothingInput = Mathf.RoundToInt(positionSmoothing * 100f).ToString();
                         forwardOffsetInput = forwardOffset.ToString("0.###", CultureInfo.InvariantCulture);
-                        nearClipInput = nearClip.ToString("0.###", CultureInfo.InvariantCulture);
+                        nearClipInput = nearClip.ToString("0.####", CultureInfo.InvariantCulture);
                         upOffsetInput = upOffset.ToString("0.###", CultureInfo.InvariantCulture);
                     }
 
@@ -1890,16 +1890,16 @@ namespace TimelinePOVSwitchX
                             GUILayout.Width(105f)
                         );
 
-                    if (Mathf.Abs(nearClip - oldNearClip) > 0.00001f)
+                    if (Mathf.Abs(nearClip - oldNearClip) > 0.000001f)
                     {
                         nearClipInput =
-                            nearClip.ToString("0.###", CultureInfo.InvariantCulture);
+                            nearClip.ToString("0.####", CultureInfo.InvariantCulture);
                     }
 
                     nearClipInput =
                         GUILayout.TextField(
                             nearClipInput,
-                            GUILayout.Width(45f)
+                            GUILayout.Width(55f)
                         );
 
                     float typedNearClip;
