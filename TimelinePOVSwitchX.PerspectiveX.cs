@@ -631,6 +631,410 @@ namespace TimelinePOVSwitchX
 
 
 
+        private static bool TryReadViewDirection(
+            string[] parts,
+            out float yaw,
+            out float pitch,
+            out float roll
+        )
+        {
+            Quaternion ignoredRotation;
+            Vector3 ignoredPosition;
+            bool ignoredHasRotation;
+            bool ignoredHasPosition;
+            bool ignoredLockDirection;
+            bool ignoredLockPosition;
+
+            return TryReadViewDirection(
+                parts,
+                out yaw,
+                out pitch,
+                out roll,
+                out ignoredRotation,
+                out ignoredPosition,
+                out ignoredHasRotation,
+                out ignoredHasPosition,
+                out ignoredLockDirection,
+                out ignoredLockPosition
+            );
+        }
+
+
+
+        private static bool TryReadViewDirection(
+            string[] parts,
+            out float yaw,
+            out float pitch,
+            out float roll,
+            out Quaternion finalRotation,
+            out Vector3 finalPosition,
+            out bool hasFinalRotation,
+            out bool hasFinalPosition,
+            out bool lockDirection,
+            out bool lockPosition
+        )
+        {
+            yaw = 0f;
+            pitch = 0f;
+            roll = 0f;
+            finalRotation = Quaternion.identity;
+            finalPosition = Vector3.zero;
+            hasFinalRotation = false;
+            hasFinalPosition = false;
+            lockDirection = false;
+            lockPosition = false;
+
+            if (parts == null)
+                return false;
+
+            foreach (string part in parts)
+            {
+                if (
+                    !part.StartsWith(
+                        "viewdir:",
+                        System.StringComparison.Ordinal
+                    )
+                )
+                {
+                    continue;
+                }
+
+                string[] values =
+                    part.Split(':');
+
+                // Legacy one-shot capture.
+                if (values.Length != 4 &&
+                    values.Length != 8 &&
+                    values.Length < 13)
+                {
+                    return false;
+                }
+
+                if (
+                    !float.TryParse(values[1], NumberStyles.Float, CultureInfo.InvariantCulture, out yaw) ||
+                    !float.TryParse(values[2], NumberStyles.Float, CultureInfo.InvariantCulture, out pitch) ||
+                    !float.TryParse(values[3], NumberStyles.Float, CultureInfo.InvariantCulture, out roll)
+                )
+                {
+                    return false;
+                }
+
+                if (values.Length >= 8)
+                {
+                    float qx;
+                    float qy;
+                    float qz;
+                    float qw;
+
+                    if (
+                        float.TryParse(values[4], NumberStyles.Float, CultureInfo.InvariantCulture, out qx) &&
+                        float.TryParse(values[5], NumberStyles.Float, CultureInfo.InvariantCulture, out qy) &&
+                        float.TryParse(values[6], NumberStyles.Float, CultureInfo.InvariantCulture, out qz) &&
+                        float.TryParse(values[7], NumberStyles.Float, CultureInfo.InvariantCulture, out qw)
+                    )
+                    {
+                        finalRotation =
+                            new Quaternion(qx, qy, qz, qw);
+
+                        hasFinalRotation = true;
+
+                        // Previous forced-direction format had no explicit
+                        // lock flag, so preserve its old behavior.
+                        if (values.Length == 8)
+                            lockDirection = true;
+                    }
+                }
+
+                if (values.Length >= 13)
+                {
+                    float px;
+                    float py;
+                    float pz;
+
+                    if (
+                        float.TryParse(values[8], NumberStyles.Float, CultureInfo.InvariantCulture, out px) &&
+                        float.TryParse(values[9], NumberStyles.Float, CultureInfo.InvariantCulture, out py) &&
+                        float.TryParse(values[10], NumberStyles.Float, CultureInfo.InvariantCulture, out pz)
+                    )
+                    {
+                        finalPosition =
+                            new Vector3(px, py, pz);
+
+                        hasFinalPosition = true;
+                    }
+
+                    lockDirection =
+                        values[11] == "1";
+
+                    lockPosition =
+                        values[12] == "1";
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+
+
+        private static bool CapturePerspectiveXViewDirection(
+            out float yaw,
+            out float pitch,
+            out float roll
+        )
+        {
+            yaw = 0f;
+            pitch = 0f;
+            roll = 0f;
+
+            try
+            {
+                BepInEx.PluginInfo pluginInfo;
+
+                if (
+                    !BepInEx.Bootstrap.Chainloader.PluginInfos.TryGetValue(
+                        "bucky.kk.perspectivex",
+                        out pluginInfo
+                    )
+                )
+                {
+                    return false;
+                }
+
+                object plugin = pluginInfo.Instance;
+
+                if (plugin == null)
+                    return false;
+
+                System.Type pluginType = plugin.GetType();
+
+                System.Reflection.BindingFlags flags =
+                    System.Reflection.BindingFlags.NonPublic |
+                    System.Reflection.BindingFlags.Instance;
+
+                System.Reflection.FieldInfo yawField =
+                    pluginType.GetField("yaw", flags);
+
+                System.Reflection.FieldInfo pitchField =
+                    pluginType.GetField("pitch", flags);
+
+                System.Reflection.FieldInfo rollField =
+                    pluginType.GetField("manualRoll", flags);
+
+                if (
+                    yawField == null ||
+                    pitchField == null ||
+                    rollField == null
+                )
+                {
+                    return false;
+                }
+
+                yaw = (float)yawField.GetValue(plugin);
+                pitch = (float)pitchField.GetValue(plugin);
+                roll = (float)rollField.GetValue(plugin);
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+
+
+        private static void ApplyPerspectiveXViewDirection(
+            object plugin,
+            System.Type pluginType,
+            string[] parts
+        )
+        {
+            // Every POV Switch event clears the previous camera locks first.
+            forceCapturedCameraDirection = false;
+            forceCapturedCameraPosition = false;
+
+            float yaw;
+            float pitch;
+            float roll;
+            Quaternion finalRotation;
+            Vector3 finalPosition;
+            bool hasFinalRotation;
+            bool hasFinalPosition;
+            bool lockDirection;
+            bool lockPosition;
+
+            if (
+                !TryReadViewDirection(
+                    parts,
+                    out yaw,
+                    out pitch,
+                    out roll,
+                    out finalRotation,
+                    out finalPosition,
+                    out hasFinalRotation,
+                    out hasFinalPosition,
+                    out lockDirection,
+                    out lockPosition
+                )
+            )
+            {
+                return;
+            }
+
+            // Restore PerspectiveX's own look values once when the keyframe fires.
+            System.Reflection.BindingFlags flags =
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Instance;
+
+            System.Reflection.FieldInfo yawField =
+                pluginType.GetField("yaw", flags);
+
+            System.Reflection.FieldInfo pitchField =
+                pluginType.GetField("pitch", flags);
+
+            System.Reflection.FieldInfo rollField =
+                pluginType.GetField("manualRoll", flags);
+
+            if (
+                yawField != null &&
+                pitchField != null &&
+                rollField != null
+            )
+            {
+                yawField.SetValue(plugin, yaw);
+                pitchField.SetValue(plugin, Mathf.Clamp(pitch, -89f, 89f));
+                rollField.SetValue(plugin, roll);
+            }
+
+            if (lockDirection && hasFinalRotation)
+            {
+                forcedCameraRotation =
+                    finalRotation;
+
+                forceCapturedCameraDirection =
+                    true;
+            }
+
+            if (lockPosition && hasFinalPosition)
+            {
+                forcedCameraPosition =
+                    finalPosition;
+
+                forceCapturedCameraPosition =
+                    true;
+            }
+        }
+
+
+
+        private static void ApplyForcedCameraLocks(
+            Camera renderingCamera
+        )
+        {
+            if (
+                !forceCapturedCameraDirection &&
+                !forceCapturedCameraPosition
+            )
+            {
+                return;
+            }
+
+            if (renderingCamera == null)
+                return;
+
+            // PerspectiveX has already calculated and written this frame's
+            // final POV transform. Override only the properties selected by
+            // the Timeline keyframe immediately before the camera renders.
+            if (forceCapturedCameraPosition)
+            {
+                renderingCamera.transform.position =
+                    forcedCameraPosition;
+            }
+
+            if (forceCapturedCameraDirection)
+            {
+                renderingCamera.transform.rotation =
+                    forcedCameraRotation;
+            }
+        }
+
+
+
+        private static void PerspectiveXCameraPreCullPostfix(
+            Camera renderingCam
+        )
+        {
+            ApplyForcedCameraLocks(
+                renderingCam
+            );
+        }
+
+
+
+        private static void TryPatchPerspectiveXCameraPreCull(
+            Harmony harmony
+        )
+        {
+            if (harmony == null)
+                return;
+
+            try
+            {
+                BepInEx.PluginInfo pluginInfo;
+
+                if (
+                    !BepInEx.Bootstrap.Chainloader.PluginInfos.TryGetValue(
+                        "bucky.kk.perspectivex",
+                        out pluginInfo
+                    )
+                )
+                {
+                    return;
+                }
+
+                object plugin =
+                    pluginInfo.Instance;
+
+                if (plugin == null)
+                    return;
+
+                System.Reflection.MethodInfo cameraPreCull =
+                    AccessTools.Method(
+                        plugin.GetType(),
+                        "OnCameraPreCull",
+                        new System.Type[]
+                        {
+                            typeof(Camera)
+                        }
+                    );
+
+                if (cameraPreCull == null)
+                    return;
+
+                System.Reflection.MethodInfo postfixMethod =
+                    AccessTools.Method(
+                        typeof(TimelinePOVSwitchX),
+                        "PerspectiveXCameraPreCullPostfix"
+                    );
+
+                if (postfixMethod == null)
+                    return;
+
+                harmony.Patch(
+                    cameraPreCull,
+                    null,
+                    new HarmonyMethod(postfixMethod)
+                );
+            }
+            catch
+            {
+            }
+        }
+
+
+
         private static void WriteCustomParts(
             Timeline.Keyframe keyframe,
             float fov,
@@ -687,6 +1091,18 @@ namespace TimelinePOVSwitchX
                 FloatText(Mathf.Clamp(upOffset, -0.1f, 0.1f)) + "|" +
                 (forcePov ? "force1" : "force0") + "|" +
                 (spawnMirror ? "mirror1" : "mirror0");
+
+            string mirrorModeTag =
+                GetExistingMirrorModeTag(parts);
+
+            string viewDirectionTag =
+                GetViewDirectionTag(parts);
+
+            if (!string.IsNullOrEmpty(mirrorModeTag))
+                keyframe.value += "|" + mirrorModeTag;
+
+            if (!string.IsNullOrEmpty(viewDirectionTag))
+                keyframe.value += "|" + viewDirectionTag;
         }
 
 
@@ -736,6 +1152,8 @@ namespace TimelinePOVSwitchX
                 // ignores Force POV, View Slot and Custom settings.
                 if (sceneId == -1)
                 {
+                    forceCapturedCameraDirection = false;
+                    forceCapturedCameraPosition = false;
                     BepInEx.PluginInfo disablePluginInfo;
 
                     if (
@@ -985,6 +1403,17 @@ namespace TimelinePOVSwitchX
                         );
                     }
                 }
+
+
+                // Apply the keyframe's captured PerspectiveX look direction
+                // after SwitchTo and after an optional View Slot load.
+                // This changes PerspectiveX's own mouse-look state once;
+                // it does not freeze Camera.main, so movement/sway continue.
+                ApplyPerspectiveXViewDirection(
+                    plugin,
+                    pluginType,
+                    storedParts
+                );
 
 
                 if (

@@ -83,6 +83,11 @@ namespace TimelinePOVSwitchX
 
             DeleteActivePovMirror();
 
+            // A capture lock belongs only to the current Timeline POV session.
+            // Do not let it survive Stop and affect later manual POV use.
+            forceCapturedCameraDirection = false;
+            forceCapturedCameraPosition = false;
+
             RestorePerspectiveXBackupIfPending();
             povSettingsSessionActive = false;
         }
@@ -101,6 +106,13 @@ namespace TimelinePOVSwitchX
             // the old Timeline POV session, so remove the temporary mirror
             // and give the user's settings back before the new scene is loaded.
             DeleteActivePovMirror();
+
+            // The old scene's captured camera transform must never leak into
+            // the scene being loaded. The PerspectiveX render postfix remains
+            // installed globally, so clear both runtime lock flags here.
+            forceCapturedCameraDirection = false;
+            forceCapturedCameraPosition = false;
+
             RestorePerspectiveXBackupIfPending();
 
             povSettingsSessionActive = false;

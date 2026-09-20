@@ -354,82 +354,82 @@ namespace TimelinePOVSwitchX
                 povDropdown.ClearOptions();
 
 
-                // =============================================
-                // USER CHANGED CHARACTER
-                // =============================================
+                    // =============================================
+                    // USER CHANGED CHARACTER
+                    // =============================================
 
-                povDropdown.onValueChanged.AddListener(
-                    index =>
-                    {
-                        if (updatingDropdown)
-                            return;
-
-
-                        List<KeyValuePair<float, Timeline.Keyframe>> selected =
-                            (List<KeyValuePair<float, Timeline.Keyframe>>)
-                            _timeline.GetPrivate(
-                                "_selectedKeyframes"
-                            );
-
-
-                        if (
-                            selected.Count !=
-                            1
-                        )
+                    povDropdown.onValueChanged.AddListener(
+                        index =>
                         {
-                            return;
+                            if (updatingDropdown)
+                                return;
+
+
+                            List<KeyValuePair<float, Timeline.Keyframe>> selected =
+                                (List<KeyValuePair<float, Timeline.Keyframe>>)
+                                _timeline.GetPrivate(
+                                    "_selectedKeyframes"
+                                );
+
+
+                            if (
+                                selected.Count !=
+                                1
+                            )
+                            {
+                                return;
+                            }
+
+
+                            if (
+                                selected[0].Value.parent.id !=
+                                "POVSwitch"
+                            )
+                            {
+                                return;
+                            }
+
+
+                            if (
+                                index < 0 ||
+                                index >= povCharacterIds.Count
+                            )
+                            {
+                                return;
+                            }
+
+
+                            int sceneId =
+                                povCharacterIds[index];
+
+
+                            // Change ONLY the character ID.
+                            // Preserve this keyframe's view mode and any
+                            // stored Custom settings.
+                            string oldStoredValue =
+                                selected[0].Value.value as string;
+
+
+                            if (string.IsNullOrEmpty(oldStoredValue))
+                            {
+                                selected[0].Value.value =
+                                    sceneId.ToString() + "|none|force1|mirror0";
+                            }
+                            else
+                            {
+                                string[] oldParts =
+                                    oldStoredValue.Split('|');
+
+
+                                oldParts[0] =
+                                    sceneId.ToString();
+
+
+                                selected[0].Value.value =
+                                    string.Join("|", oldParts);
+                            }
                         }
-
-
-                        if (
-                            selected[0].Value.parent.id !=
-                            "POVSwitch"
-                        )
-                        {
-                            return;
-                        }
-
-
-                        if (
-                            index < 0 ||
-                            index >= povCharacterIds.Count
-                        )
-                        {
-                            return;
-                        }
-
-
-                        int sceneId =
-                            povCharacterIds[index];
-
-
-                        // Change ONLY the character ID.
-                        // Preserve this keyframe's view mode and any
-                        // stored Custom settings.
-                        string oldStoredValue =
-                            selected[0].Value.value as string;
-
-
-                        if (string.IsNullOrEmpty(oldStoredValue))
-                        {
-                            selected[0].Value.value =
-                                sceneId.ToString() + "|none|force1|mirror0";
-                        }
-                        else
-                        {
-                            string[] oldParts =
-                                oldStoredValue.Split('|');
-
-
-                            oldParts[0] =
-                                sceneId.ToString();
-
-
-                            selected[0].Value.value =
-                                string.Join("|", oldParts);
-                        }
-                    }
-                );
+                    );
 
 
                 povDropdown.gameObject.SetActive(
@@ -1262,7 +1262,10 @@ namespace TimelinePOVSwitchX
 
                 }
             }
-        }
+                    // Camera capture locks are applied by a Harmony postfix on
+            // PerspectiveX.OnCameraPreCull, after PerspectiveX writes the
+            // final POV camera transform for this rendered frame.
+}
 
 
 
@@ -1561,6 +1564,123 @@ namespace TimelinePOVSwitchX
                 }
             }
 
+
+
+            // Per-keyframe PerspectiveX look direction.
+            // This stores PerspectiveX's own yaw/pitch/manualRoll values,
+            // so normal POV movement, smoothing and animation sway continue.
+            if (!isDisablePovKeyframe)
+            {
+                float capturedYaw;
+                float capturedPitch;
+                float capturedRoll;
+
+                bool hasCapturedDirection =
+                    TryReadViewDirection(
+                        parts,
+                        out capturedYaw,
+                        out capturedPitch,
+                        out capturedRoll
+                    );
+
+                GUILayout.Space(5f);
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Camera Direction", GUILayout.Width(145f));
+                GUILayout.Label(
+                    hasCapturedDirection ? "Captured" : "Default",
+                    GUILayout.Width(105f)
+                );
+                GUILayout.EndHorizontal();
+
+                GUILayout.BeginHorizontal();
+
+                if (
+                    GUILayout.Button(
+                        "Capture Current View",
+                        GUILayout.Width(205f)
+                    )
+                )
+                {
+                    float yaw;
+                    float pitch;
+                    float roll;
+
+                    if (
+                        CapturePerspectiveXViewDirection(
+                            out yaw,
+                            out pitch,
+                            out roll
+                        )
+                    )
+                    {
+                        SetKeyframeViewDirection(
+                            selectedKeyframe,
+                            yaw,
+                            pitch,
+                            roll
+                        );
+
+                        parts =
+                            ((string)selectedKeyframe.value).Split('|');
+                    }
+                }
+
+                GUI.enabled = hasCapturedDirection;
+
+                if (
+                    GUILayout.Button(
+                        "Reset",
+                        GUILayout.Width(70f)
+                    )
+                )
+                {
+                    ClearKeyframeViewDirection(selectedKeyframe);
+
+                    parts =
+                        ((string)selectedKeyframe.value).Split('|');
+                }
+
+                GUI.enabled = true;
+                GUILayout.EndHorizontal();
+
+                // These locks are only camera-transform behavior.
+                // PerspectiveX's normal Custom Settings remain separate below.
+                if (hasCapturedDirection)
+                {
+                    bool lockDirection =
+                        GetViewDirectionLock(parts);
+
+                    bool lockPosition =
+                        GetViewPositionLock(parts);
+
+                    bool newLockDirection =
+                        GUILayout.Toggle(
+                            lockDirection,
+                            "Lock Direction"
+                        );
+
+                    bool newLockPosition =
+                        GUILayout.Toggle(
+                            lockPosition,
+                            "Lock Position"
+                        );
+
+                    if (
+                        newLockDirection != lockDirection ||
+                        newLockPosition != lockPosition
+                    )
+                    {
+                        SetViewCaptureLocks(
+                            selectedKeyframe,
+                            newLockDirection,
+                            newLockPosition
+                        );
+
+                        parts =
+                            ((string)selectedKeyframe.value).Split('|');
+                    }
+                }
+            }
 
 
             GUILayout.Space(5f);
@@ -2347,6 +2467,268 @@ namespace TimelinePOVSwitchX
 
 
 
+        private static void SetKeyframeViewDirection(
+            Timeline.Keyframe keyframe,
+            float yaw,
+            float pitch,
+            float roll
+        )
+        {
+            string storedValue = keyframe.value as string;
+
+            if (string.IsNullOrEmpty(storedValue))
+                return;
+
+            Camera captureCamera =
+                Camera.main;
+
+            Quaternion capturedRotation =
+                captureCamera != null
+                    ? captureCamera.transform.rotation
+                    : Quaternion.identity;
+
+            Vector3 capturedPosition =
+                captureCamera != null
+                    ? captureCamera.transform.position
+                    : Vector3.zero;
+
+            // Capture defaults:
+            // Direction = locked
+            // Position  = unlocked
+            string newTag =
+                "viewdir:" +
+                FloatText(yaw) + ":" +
+                FloatText(pitch) + ":" +
+                FloatText(roll) + ":" +
+                FloatText(capturedRotation.x) + ":" +
+                FloatText(capturedRotation.y) + ":" +
+                FloatText(capturedRotation.z) + ":" +
+                FloatText(capturedRotation.w) + ":" +
+                FloatText(capturedPosition.x) + ":" +
+                FloatText(capturedPosition.y) + ":" +
+                FloatText(capturedPosition.z) + ":" +
+                "1:0";
+
+            string[] parts = storedValue.Split('|');
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (
+                    parts[i].StartsWith(
+                        "viewdir:",
+                        System.StringComparison.Ordinal
+                    )
+                )
+                {
+                    parts[i] = newTag;
+                    keyframe.value = string.Join("|", parts);
+                    return;
+                }
+            }
+
+            keyframe.value = storedValue + "|" + newTag;
+        }
+
+
+
+        private static bool GetViewDirectionLock(
+            string[] parts
+        )
+        {
+            string tag = GetViewDirectionTag(parts);
+
+            if (string.IsNullOrEmpty(tag))
+                return false;
+
+            string[] values = tag.Split(':');
+
+            // Older captured-direction keyframes behave as direction-locked.
+            if (values.Length == 8)
+                return true;
+
+            if (values.Length >= 13)
+                return values[11] == "1";
+
+            return false;
+        }
+
+
+
+        private static bool GetViewPositionLock(
+            string[] parts
+        )
+        {
+            string tag = GetViewDirectionTag(parts);
+
+            if (string.IsNullOrEmpty(tag))
+                return false;
+
+            string[] values = tag.Split(':');
+
+            if (values.Length >= 13)
+                return values[12] == "1";
+
+            return false;
+        }
+
+
+
+        private static void SetViewCaptureLocks(
+            Timeline.Keyframe keyframe,
+            bool lockDirection,
+            bool lockPosition
+        )
+        {
+            string storedValue =
+                keyframe.value as string;
+
+            if (string.IsNullOrEmpty(storedValue))
+                return;
+
+            string[] parts =
+                storedValue.Split('|');
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (
+                    !parts[i].StartsWith(
+                        "viewdir:",
+                        System.StringComparison.Ordinal
+                    )
+                )
+                {
+                    continue;
+                }
+
+                string[] values =
+                    parts[i].Split(':');
+
+                // New capture format.
+                if (values.Length >= 13)
+                {
+                    values[11] =
+                        lockDirection ? "1" : "0";
+
+                    values[12] =
+                        lockPosition ? "1" : "0";
+
+                    parts[i] =
+                        string.Join(":", values);
+
+                    keyframe.value =
+                        string.Join("|", parts);
+
+                    return;
+                }
+
+                // Old forced-direction capture: keep its stored rotation and
+                // upgrade it to the new format using the current camera
+                // position. Direction remains locked; Position defaults off.
+                if (values.Length == 8)
+                {
+                    Vector3 position =
+                        Camera.main != null
+                            ? Camera.main.transform.position
+                            : Vector3.zero;
+
+                    parts[i] =
+                        parts[i] + ":" +
+                        FloatText(position.x) + ":" +
+                        FloatText(position.y) + ":" +
+                        FloatText(position.z) + ":" +
+                        (lockDirection ? "1" : "0") + ":" +
+                        (lockPosition ? "1" : "0");
+
+                    keyframe.value =
+                        string.Join("|", parts);
+
+                    return;
+                }
+            }
+        }
+
+
+
+        private static void ClearKeyframeViewDirection(
+            Timeline.Keyframe keyframe
+        )
+        {
+            string storedValue = keyframe.value as string;
+
+            if (string.IsNullOrEmpty(storedValue))
+                return;
+
+            string[] parts = storedValue.Split('|');
+            List<string> kept = new List<string>();
+
+            foreach (string part in parts)
+            {
+                if (
+                    part.StartsWith(
+                        "viewdir:",
+                        System.StringComparison.Ordinal
+                    )
+                )
+                {
+                    continue;
+                }
+
+                kept.Add(part);
+            }
+
+            keyframe.value = string.Join("|", kept.ToArray());
+        }
+
+
+
+        private static string GetExistingMirrorModeTag(
+            string[] parts
+        )
+        {
+            if (parts == null)
+                return null;
+
+            foreach (string part in parts)
+            {
+                if (
+                    part == "mirrorstatic" ||
+                    part == "mirrordynamic"
+                )
+                {
+                    return part;
+                }
+            }
+
+            return null;
+        }
+
+
+
+        private static string GetViewDirectionTag(
+            string[] parts
+        )
+        {
+            if (parts == null)
+                return null;
+
+            foreach (string part in parts)
+            {
+                if (
+                    part.StartsWith(
+                        "viewdir:",
+                        System.StringComparison.Ordinal
+                    )
+                )
+                {
+                    return part;
+                }
+            }
+
+            return null;
+        }
+
+
+
         private static void EnsureCustomSettings(
             Timeline.Keyframe keyframe
         )
@@ -2426,6 +2808,18 @@ namespace TimelinePOVSwitchX
                 FloatText(upOffset) + "|" +
                 (forcePov ? "force1" : "force0") + "|" +
                 (spawnMirror ? "mirror1" : "mirror0");
+
+            string mirrorModeTag =
+                GetExistingMirrorModeTag(parts);
+
+            string viewDirectionTag =
+                GetViewDirectionTag(parts);
+
+            if (!string.IsNullOrEmpty(mirrorModeTag))
+                keyframe.value += "|" + mirrorModeTag;
+
+            if (!string.IsNullOrEmpty(viewDirectionTag))
+                keyframe.value += "|" + viewDirectionTag;
         }
 
 

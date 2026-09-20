@@ -16,10 +16,19 @@ namespace TimelinePOVSwitchX
     [BepInPlugin(
         "com.Alice317.TimelinePOVSwitchX",
         "TimelinePOVSwitchX",
-        "1.0.2"
+        "1.1.0"
     )]
+    [BepInProcess("CharaStudio")]
     public partial class TimelinePOVSwitchX : BaseUnityPlugin
     {
+        // Camera-capture locks remain active until the next POV Switch event.
+        // Direction and position are independent.
+        private static bool forceCapturedCameraDirection = false;
+        private static Quaternion forcedCameraRotation = Quaternion.identity;
+
+        private static bool forceCapturedCameraPosition = false;
+        private static Vector3 forcedCameraPosition = Vector3.zero;
+
         private static TimelinePOVSwitchX pluginInstance;
         private static Timeline.Timeline _timeline;
 
@@ -44,7 +53,7 @@ namespace TimelinePOVSwitchX
 
         // Separate draggable settings window for the selected POV keyframe.
         private Rect povSettingsWindowRect =
-            new Rect(500f, 200f, 330f, 430f);
+            new Rect(500f, 200f, 330f, 500f);
 
         // GUI.Window + GUI.DragWindow handle movement; OnGUI stores the
         // Rect returned by GUI.Window so the dragged position persists.
@@ -218,10 +227,20 @@ namespace TimelinePOVSwitchX
                 Singleton<Timeline.Timeline>.Instance;
 
 
-            new Harmony(
-                "com.Alice317.TimelinePOVSwitchX"
-            ).PatchAll(
+            Harmony harmony =
+                new Harmony(
+                    "com.Alice317.TimelinePOVSwitchX"
+                );
+
+            harmony.PatchAll(
                 typeof(TimelinePOVSwitchX)
+            );
+
+            // PerspectiveX writes its final POV transform in OnCameraPreCull,
+            // which happens after ordinary LateUpdate. Patch that exact method
+            // so our optional camera locks get the final word before rendering.
+            TryPatchPerspectiveXCameraPreCull(
+                harmony
             );
         }
 
@@ -233,6 +252,9 @@ namespace TimelinePOVSwitchX
                 null;
 
             DeleteActivePovMirror();
+
+            forceCapturedCameraDirection = false;
+            forceCapturedCameraPosition = false;
 
             // Normal plugin/game shutdown: restore if possible.
             // A hard crash will skip this, and startup recovery handles it.

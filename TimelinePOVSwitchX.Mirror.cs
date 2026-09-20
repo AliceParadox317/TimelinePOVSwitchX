@@ -943,20 +943,20 @@ namespace TimelinePOVSwitchX
                             mirror,
                             renderer,
                             material,
-                            "AlbedoDetailScale",
+                            "_AlbedoDetailScale",
                             0f
                         );
                     }
 
                     if (material.HasProperty("_ReflectionBlurSigma"))
                     {
-                        material.SetFloat("_ReflectionBlurSigma", 0.0001f);
+                        material.SetFloat("_ReflectionBlurSigma", 0.01f);
                         SetPersistentMaterialEditorFloat(
                             mirror,
                             renderer,
                             material,
-                            "ReflectionBlurSigma",
-                            0.0001f
+                            "_ReflectionBlurSigma",
+                            0.01f
                         );
                     }
 
@@ -967,7 +967,7 @@ namespace TimelinePOVSwitchX
                             mirror,
                             renderer,
                             material,
-                            "ReflectionDistortion",
+                            "_ReflectionDistortion",
                             0f
                         );
                     }
@@ -984,112 +984,129 @@ namespace TimelinePOVSwitchX
             float value
         )
         {
-            if (mirror == null || mirror.objectItem == null ||
-                renderer == null || material == null ||
-                string.IsNullOrEmpty(propertyName))
+            if (
+                mirror == null ||
+                mirror.objectItem == null ||
+                renderer == null ||
+                material == null ||
+                string.IsNullOrEmpty(propertyName)
+            )
+            {
                 return false;
+            }
 
             try
             {
-                BepInEx.PluginInfo plugin;
-                if (!BepInEx.Bootstrap.Chainloader.PluginInfos.TryGetValue(
-                        "com.deathweasel.bepinex.materialeditor", out plugin) ||
-                    plugin == null || plugin.Instance == null)
+                BepInEx.PluginInfo materialEditorPlugin;
+                if (
+                    !BepInEx.Bootstrap.Chainloader.PluginInfos.TryGetValue(
+                        "com.deathweasel.bepinex.materialeditor",
+                        out materialEditorPlugin
+                    ) ||
+                    materialEditorPlugin == null ||
+                    materialEditorPlugin.Instance == null
+                )
+                {
                     return false;
+                }
 
                 System.Reflection.Assembly assembly =
-                    plugin.Instance.GetType().Assembly;
+                    materialEditorPlugin.Instance.GetType().Assembly;
 
-                System.Type sceneControllerType =
-                    assembly.GetType("KK_Plugins.MaterialEditor.SceneController", false);
-
-                if (sceneControllerType == null)
-                    return false;
-
-                UnityEngine.Object controller =
-                    UnityEngine.Object.FindObjectOfType(sceneControllerType);
-
-                if (controller == null)
-                    return false;
-
-                System.Reflection.MethodInfo[] methods =
-                    sceneControllerType.GetMethods(
-                        System.Reflection.BindingFlags.Public |
-                        System.Reflection.BindingFlags.NonPublic |
-                        System.Reflection.BindingFlags.Instance);
-
-                foreach (System.Reflection.MethodInfo method in methods)
+                // Use MaterialEditor's public MaterialAPI when present.
+                // Different KK MaterialEditor builds expose it either as a
+                // nested type or as a dotted type, so locate it by name.
+                System.Type[] types = assembly.GetTypes();
+                foreach (System.Type type in types)
                 {
-                    if (method.Name != "SetMaterialFloatProperty")
-                        continue;
-
-                    System.Reflection.ParameterInfo[] parameters =
-                        method.GetParameters();
-                    object[] args = new object[parameters.Length];
-                    bool compatible = true;
-
-                    for (int i = 0; i < parameters.Length; i++)
+                    if (
+                        type == null ||
+                        type.FullName == null ||
+                        type.FullName.IndexOf("MaterialEditorAPI") < 0 ||
+                        type.Name != "MaterialAPI"
+                    )
                     {
-                        System.Type pt = parameters[i].ParameterType;
-                        string pn = parameters[i].Name == null
-                            ? ""
-                            : parameters[i].Name.ToLowerInvariant();
+                        continue;
+                    }
 
-                        if (pt == typeof(int))
-                            args[i] = mirror.objectInfo.dicKey;
-                        else if (pt == typeof(GameObject))
-                            args[i] = mirror.objectItem;
-                        else if (pt == typeof(Renderer))
-                            args[i] = renderer;
-                        else if (pt == typeof(Material))
-                            args[i] = material;
-                        else if (pt == typeof(float))
-                            args[i] = value;
-                        else if (pt == typeof(bool))
-                            args[i] = true;
-                        else if (pt == typeof(string))
+                    System.Reflection.MethodInfo[] methods =
+                        type.GetMethods(
+                            System.Reflection.BindingFlags.Public |
+                            System.Reflection.BindingFlags.NonPublic |
+                            System.Reflection.BindingFlags.Static
+                        );
+
+                    foreach (System.Reflection.MethodInfo method in methods)
+                    {
+                        if (method.Name != "SetMaterialFloatProperty")
+                            continue;
+
+                        System.Reflection.ParameterInfo[] parameters =
+                            method.GetParameters();
+                        object[] arguments = new object[parameters.Length];
+                        bool compatible = true;
+
+                        for (int i = 0; i < parameters.Length; i++)
                         {
-                            if (pn.IndexOf("property") >= 0)
-                                args[i] = propertyName.TrimStart('_');
-                            else if (pn.IndexOf("material") >= 0)
+                            System.Type pt = parameters[i].ParameterType;
+                            string pn = parameters[i].Name == null
+                                ? ""
+                                : parameters[i].Name.ToLowerInvariant();
+
+                            if (pt == typeof(GameObject))
+                                arguments[i] = mirror.objectItem;
+                            else if (pt == typeof(Material))
+                                arguments[i] = material;
+                            else if (pt == typeof(Renderer))
+                                arguments[i] = renderer;
+                            else if (pt == typeof(float))
+                                arguments[i] = value;
+                            else if (pt == typeof(int))
+                                arguments[i] = mirror.objectInfo.dicKey;
+                            else if (pt == typeof(bool))
+                                arguments[i] = true;
+                            else if (pt == typeof(string))
                             {
-                                string name = material.name ?? "";
-                                if (name.EndsWith(" (Instance)",
-                                    System.StringComparison.Ordinal))
-                                    name = name.Substring(
-                                        0, name.Length - " (Instance)".Length);
-                                args[i] = name;
+                                if (pn.IndexOf("property") >= 0)
+                                    arguments[i] = propertyName;
+                                else if (pn.IndexOf("material") >= 0)
+                                    arguments[i] = material.name;
+                                else if (pn.IndexOf("renderer") >= 0)
+                                    arguments[i] = renderer.name;
+                                else if (pn.IndexOf("gameobject") >= 0 || pn.IndexOf("object") >= 0)
+                                    arguments[i] = mirror.objectItem.name;
+                                else
+                                {
+                                    compatible = false;
+                                    break;
+                                }
                             }
-                            else if (pn.IndexOf("renderer") >= 0)
-                                args[i] = renderer.name;
+                            else if (parameters[i].IsOptional)
+                                arguments[i] = parameters[i].DefaultValue;
                             else
                             {
                                 compatible = false;
                                 break;
                             }
                         }
-                        else if (parameters[i].IsOptional)
-                            args[i] = parameters[i].DefaultValue;
-                        else
-                        {
-                            compatible = false;
-                            break;
-                        }
+
+                        if (!compatible)
+                            continue;
+
+                        method.Invoke(null, arguments);
+                        return true;
                     }
-
-                    if (!compatible)
-                        continue;
-
-                    method.Invoke(controller, args);
-                    return true;
                 }
             }
             catch
             {
             }
 
+            // The direct Material.SetFloat was already performed by the caller,
+            // so failure here affects persistence only, never the visible mirror.
             return false;
         }
+
 
         // =========================================================
         // TEMPORARY POV MIRROR
