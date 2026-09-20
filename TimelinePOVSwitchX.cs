@@ -16,7 +16,7 @@ namespace TimelinePOVSwitchX
     [BepInPlugin(
         "com.Alice317.TimelinePOVSwitchX",
         "TimelinePOVSwitchX",
-        "1.0.1"
+        "1.0.2"
     )]
     public partial class TimelinePOVSwitchX : BaseUnityPlugin
     {

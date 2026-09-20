@@ -881,7 +881,7 @@ namespace TimelinePOVSwitchX
 
             Text label = labelObject.GetComponent<Text>();
             label.font = font;
-            label.fontSize = 14;
+            label.fontSize = 18;
             label.fontStyle = sourceText.fontStyle;
             label.alignment = TextAnchor.MiddleLeft;
             label.color = new Color(0.38f, 0.38f, 0.38f, 1f);
@@ -912,7 +912,7 @@ namespace TimelinePOVSwitchX
 
             Text arrow = arrowObject.GetComponent<Text>();
             arrow.font = font;
-            arrow.fontSize = 14;
+            arrow.fontSize = 11;
             arrow.alignment = TextAnchor.MiddleCenter;
             arrow.color = new Color(0.38f, 0.38f, 0.38f, 1f);
             arrow.text = "▼";
@@ -1022,14 +1022,14 @@ namespace TimelinePOVSwitchX
             itemRect.anchorMin = new Vector2(0f, 1f);
             itemRect.anchorMax = new Vector2(1f, 1f);
             itemRect.pivot = new Vector2(0.5f, 1f);
-            itemRect.sizeDelta = new Vector2(0f, 24f);
+            itemRect.sizeDelta = new Vector2(0f, 30f);
 
             Image itemBackground = itemObject.GetComponent<Image>();
             itemBackground.color = new Color(0.82f, 0.82f, 0.82f, 1f);
 
             LayoutElement itemLayout = itemObject.GetComponent<LayoutElement>();
-            itemLayout.minHeight = 24f;
-            itemLayout.preferredHeight = 24f;
+            itemLayout.minHeight = 30f;
+            itemLayout.preferredHeight = 30f;
             itemLayout.flexibleHeight = 0f;
 
             Toggle itemToggle = itemObject.GetComponent<Toggle>();
@@ -1062,7 +1062,7 @@ namespace TimelinePOVSwitchX
 
             Text itemLabel = itemLabelObject.GetComponent<Text>();
             itemLabel.font = font;
-            itemLabel.fontSize = 14;
+            itemLabel.fontSize = 18;
             itemLabel.fontStyle = sourceText.fontStyle;
             itemLabel.alignment = TextAnchor.MiddleLeft;
             itemLabel.color = new Color(0.38f, 0.38f, 0.38f, 1f);
@@ -1076,6 +1076,7 @@ namespace TimelinePOVSwitchX
             scrollRect.horizontal = false;
             scrollRect.vertical = true;
             scrollRect.movementType = ScrollRect.MovementType.Clamped;
+            scrollRect.scrollSensitivity = 60f;
 
             dropdown.template = templateRect;
             dropdown.itemText = itemLabel;
@@ -1123,16 +1124,68 @@ namespace TimelinePOVSwitchX
             if (fullWidth <= 0f)
                 return;
 
+            int optionCount = povDropdown.options.Count;
+
+            if (optionCount <= 0)
+                return;
+
+            const float rowHeight = 30f;
+            const int maxVisibleRows = 6;
+
+            int visibleRows = Mathf.Min(optionCount, maxVisibleRows);
+            float visibleHeight = visibleRows * rowHeight;
+
+            // Only resize the LIVE popup. Do NOT reposition the option Toggles.
+            // Unity Dropdown owns their ordering and click -> option-index mapping.
+            // Manually moving those Toggles was what made selecting Disable POV
+            // leave the other character effectively unreachable.
             liveRect.SetSizeWithCurrentAnchors(
                 RectTransform.Axis.Horizontal,
                 fullWidth
             );
 
+            liveRect.SetSizeWithCurrentAnchors(
+                RectTransform.Axis.Vertical,
+                visibleHeight
+            );
+
+            ScrollRect liveScrollRect =
+                liveDropdown.GetComponentInChildren<ScrollRect>(true);
+
+            if (liveScrollRect != null)
+            {
+                liveScrollRect.scrollSensitivity = 60f;
+                liveScrollRect.horizontal = false;
+                liveScrollRect.vertical = optionCount > maxVisibleRows;
+                liveScrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+                RectTransform viewportRect = liveScrollRect.viewport;
+
+                if (viewportRect != null)
+                {
+                    viewportRect.anchorMin = Vector2.zero;
+                    viewportRect.anchorMax = Vector2.one;
+                    viewportRect.offsetMin = Vector2.zero;
+                    viewportRect.offsetMax = Vector2.zero;
+                }
+
+                // If every option fits, there is no reason for Unity to retain
+                // a scroll offset around the currently selected option. This is
+                // important when switching from Kii Shira to Disable POV and
+                // reopening the two-row list.
+                if (optionCount <= maxVisibleRows && liveScrollRect.content != null)
+                    liveScrollRect.content.anchoredPosition = Vector2.zero;
+            }
+
+            // Width/font only. Leave vertical positions and Toggle callbacks alone.
             Toggle[] liveItems =
                 liveDropdown.GetComponentsInChildren<Toggle>(true);
 
             foreach (Toggle itemToggle in liveItems)
             {
+                if (!itemToggle.gameObject.activeSelf)
+                    continue;
+
                 RectTransform itemRect =
                     itemToggle.GetComponent<RectTransform>();
 
@@ -1140,86 +1193,33 @@ namespace TimelinePOVSwitchX
                 {
                     itemRect.anchorMin =
                         new Vector2(0f, itemRect.anchorMin.y);
-
                     itemRect.anchorMax =
                         new Vector2(1f, itemRect.anchorMax.y);
-
                     itemRect.offsetMin =
                         new Vector2(0f, itemRect.offsetMin.y);
-
                     itemRect.offsetMax =
                         new Vector2(0f, itemRect.offsetMax.y);
-
-                    itemRect.SetSizeWithCurrentAnchors(
-                        RectTransform.Axis.Horizontal,
-                        fullWidth
-                    );
-                }
-
-                LayoutElement layout =
-                    itemToggle.GetComponent<LayoutElement>();
-
-                if (layout != null)
-                {
-                    layout.minWidth = fullWidth;
-                    layout.preferredWidth = fullWidth;
-                    layout.flexibleWidth = 0f;
                 }
 
                 if (itemToggle.targetGraphic != null)
                 {
                     RectTransform graphicRect =
                         itemToggle.targetGraphic.rectTransform;
-
                     graphicRect.anchorMin =
                         new Vector2(0f, graphicRect.anchorMin.y);
-
                     graphicRect.anchorMax =
                         new Vector2(1f, graphicRect.anchorMax.y);
-
                     graphicRect.offsetMin =
                         new Vector2(0f, graphicRect.offsetMin.y);
-
                     graphicRect.offsetMax =
                         new Vector2(0f, graphicRect.offsetMax.y);
-
-                    graphicRect.SetSizeWithCurrentAnchors(
-                        RectTransform.Axis.Horizontal,
-                        fullWidth
-                    );
                 }
 
-                RectTransform[] childRects =
-                    itemToggle.GetComponentsInChildren<RectTransform>(true);
+                Text rowText =
+                    itemToggle.GetComponentInChildren<Text>(true);
 
-                foreach (RectTransform childRect in childRects)
-                {
-                    if (
-                        childRect == itemRect ||
-                        childRect.name.IndexOf("Background",
-                            System.StringComparison.OrdinalIgnoreCase) < 0
-                    )
-                    {
-                        continue;
-                    }
-
-                    childRect.anchorMin =
-                        new Vector2(0f, childRect.anchorMin.y);
-
-                    childRect.anchorMax =
-                        new Vector2(1f, childRect.anchorMax.y);
-
-                    childRect.offsetMin =
-                        new Vector2(0f, childRect.offsetMin.y);
-
-                    childRect.offsetMax =
-                        new Vector2(0f, childRect.offsetMax.y);
-
-                    childRect.SetSizeWithCurrentAnchors(
-                        RectTransform.Axis.Horizontal,
-                        fullWidth
-                    );
-                }
+                if (rowText != null)
+                    rowText.fontSize = 18;
             }
         }
 
