@@ -333,292 +333,108 @@ namespace TimelinePOVSwitchX
                     return;
 
 
-                Dropdown[] dropdowns =
-                    Resources.FindObjectsOfTypeAll<Dropdown>();
-
-
-                foreach (
-                    Dropdown dropdown
-                    in dropdowns
-                )
-                {
-                    if (
-                        dropdown.transform.parent ==
-                        null
-                    )
-                    {
-                        continue;
-                    }
-
-
-                    if (
-                        dropdown.transform.parent.name !=
-                        "ComponentPropertyEntry_Enum"
-                    )
-                    {
-                        continue;
-                    }
-
-
-                    povDropdown =
-                        Instantiate(
-                            dropdown,
-                            timelineValueText.transform.parent
-                        );
-
-
-                    povDropdown.name =
-                        "POVSwitchDropdown";
-
-
-                    povDropdown.ClearOptions();
-
-
-
-                    // =============================================
-                    // FILL TIMELINE VALUE BOX
-                    // =============================================
-
-                    RectTransform rect =
-                        povDropdown.GetComponent<RectTransform>();
-
-
-                    rect.anchorMin =
-                        Vector2.zero;
-
-                    rect.anchorMax =
-                        Vector2.one;
-
-                    rect.offsetMin =
-                        Vector2.zero;
-
-                    rect.offsetMax =
-                        Vector2.zero;
-
-
-                    // =============================================
-                    // MAKE OPENED CHARACTER LIST FULL WIDTH
-                    // =============================================
-
-                    // The source Studio dropdown was narrower than Timeline's
-                    // value box. Stretching only the dropdown root leaves its
-                    // popup/item highlight at the old width, which creates a
-                    // selectable name half and an empty half.
-                    if (povDropdown.template != null)
-                    {
-                        RectTransform templateRect = povDropdown.template;
-
-                        templateRect.anchorMin =
-                            new Vector2(0f, templateRect.anchorMin.y);
-
-                        templateRect.anchorMax =
-                            new Vector2(1f, templateRect.anchorMax.y);
-
-                        templateRect.offsetMin =
-                            new Vector2(0f, templateRect.offsetMin.y);
-
-                        templateRect.offsetMax =
-                            new Vector2(0f, templateRect.offsetMax.y);
-
-
-                        Transform viewport =
-                            templateRect.Find("Viewport");
-
-                        if (viewport != null)
-                        {
-                            RectTransform viewportRect =
-                                viewport as RectTransform;
-
-                            if (viewportRect != null)
-                            {
-                                viewportRect.anchorMin =
-                                    new Vector2(0f, viewportRect.anchorMin.y);
-
-                                viewportRect.anchorMax =
-                                    new Vector2(1f, viewportRect.anchorMax.y);
-
-                                viewportRect.offsetMin =
-                                    new Vector2(0f, viewportRect.offsetMin.y);
-
-                                viewportRect.offsetMax =
-                                    new Vector2(0f, viewportRect.offsetMax.y);
-                            }
-
-
-                            Transform content =
-                                viewport.Find("Content");
-
-                            if (content != null)
-                            {
-                                RectTransform contentRect =
-                                    content as RectTransform;
-
-                                if (contentRect != null)
-                                {
-                                    contentRect.anchorMin =
-                                        new Vector2(0f, contentRect.anchorMin.y);
-
-                                    contentRect.anchorMax =
-                                        new Vector2(1f, contentRect.anchorMax.y);
-
-                                    contentRect.offsetMin =
-                                        new Vector2(0f, contentRect.offsetMin.y);
-
-                                    contentRect.offsetMax =
-                                        new Vector2(0f, contentRect.offsetMax.y);
-                                }
-                            }
-                        }
-
-
-                        Toggle itemToggle =
-                            templateRect.GetComponentInChildren<Toggle>(true);
-
-                        if (itemToggle != null)
-                        {
-                            // Stretch the Toggle row itself.
-                            RectTransform itemRect =
-                                itemToggle.GetComponent<RectTransform>();
-
-                            itemRect.anchorMin =
-                                new Vector2(0f, itemRect.anchorMin.y);
-
-                            itemRect.anchorMax =
-                                new Vector2(1f, itemRect.anchorMax.y);
-
-                            itemRect.offsetMin =
-                                new Vector2(0f, itemRect.offsetMin.y);
-
-                            itemRect.offsetMax =
-                                new Vector2(0f, itemRect.offsetMax.y);
-
-
-                            // IMPORTANT: the grey hover/selection area is not
-                            // the Toggle RectTransform itself. It is the
-                            // Toggle's targetGraphic (normally "Item Background").
-                            // The screenshot showed this graphic still keeping
-                            // the narrow width of the source Studio dropdown.
-                            if (itemToggle.targetGraphic != null)
-                            {
-                                RectTransform backgroundRect =
-                                    itemToggle.targetGraphic.rectTransform;
-
-                                backgroundRect.anchorMin =
-                                    new Vector2(0f, backgroundRect.anchorMin.y);
-
-                                backgroundRect.anchorMax =
-                                    new Vector2(1f, backgroundRect.anchorMax.y);
-
-                                backgroundRect.offsetMin =
-                                    new Vector2(0f, backgroundRect.offsetMin.y);
-
-                                backgroundRect.offsetMax =
-                                    new Vector2(0f, backgroundRect.offsetMax.y);
-                            }
-
-
-                            // Prevent a LayoutElement copied from the source
-                            // dropdown from forcing the option back to its old
-                            // fixed width.
-                            LayoutElement itemLayout =
-                                itemToggle.GetComponent<LayoutElement>();
-
-                            if (itemLayout != null)
-                            {
-                                itemLayout.minWidth = -1f;
-                                itemLayout.preferredWidth = -1f;
-                                itemLayout.flexibleWidth = 1f;
-                            }
-                        }
-                    }
-
-
-
-                    // =============================================
-                    // USER CHANGED CHARACTER
-                    // =============================================
-
-                    povDropdown.onValueChanged.AddListener(
-                        index =>
-                        {
-                            if (updatingDropdown)
-                                return;
-
-
-                            List<KeyValuePair<float, Timeline.Keyframe>> selected =
-                                (List<KeyValuePair<float, Timeline.Keyframe>>)
-                                _timeline.GetPrivate(
-                                    "_selectedKeyframes"
-                                );
-
-
-                            if (
-                                selected.Count !=
-                                1
-                            )
-                            {
-                                return;
-                            }
-
-
-                            if (
-                                selected[0].Value.parent.id !=
-                                "POVSwitch"
-                            )
-                            {
-                                return;
-                            }
-
-
-                            if (
-                                index < 0 ||
-                                index >= povCharacterIds.Count
-                            )
-                            {
-                                return;
-                            }
-
-
-                            int sceneId =
-                                povCharacterIds[index];
-
-
-                            // Change ONLY the character ID.
-                            // Preserve this keyframe's view mode and any
-                            // stored Custom settings.
-                            string oldStoredValue =
-                                selected[0].Value.value as string;
-
-
-                            if (string.IsNullOrEmpty(oldStoredValue))
-                            {
-                                selected[0].Value.value =
-                                    sceneId.ToString() + "|none|force1|mirror0";
-                            }
-                            else
-                            {
-                                string[] oldParts =
-                                    oldStoredValue.Split('|');
-
-
-                                oldParts[0] =
-                                    sceneId.ToString();
-
-
-                                selected[0].Value.value =
-                                    string.Join("|", oldParts);
-                            }
-                        }
+                // Create our own Unity UI Dropdown.
+                // Do NOT clone ComponentUtil / RuntimeUnityEditor UI here:
+                // TimelinePOVSwitchX must work when those plugins are absent.
+                povDropdown =
+                    CreatePovDropdown(
+                        timelineValueText.transform.parent,
+                        timelineValueText
                     );
 
 
-                    povDropdown.gameObject.SetActive(
-                        false
-                    );
+                if (povDropdown == null)
+                    return;
 
 
-                    break;
-                }
+                povDropdown.name =
+                    "POVSwitchDropdown";
+
+
+                povDropdown.ClearOptions();
+
+
+                // =============================================
+                // USER CHANGED CHARACTER
+                // =============================================
+
+                povDropdown.onValueChanged.AddListener(
+                    index =>
+                    {
+                        if (updatingDropdown)
+                            return;
+
+
+                        List<KeyValuePair<float, Timeline.Keyframe>> selected =
+                            (List<KeyValuePair<float, Timeline.Keyframe>>)
+                            _timeline.GetPrivate(
+                                "_selectedKeyframes"
+                            );
+
+
+                        if (
+                            selected.Count !=
+                            1
+                        )
+                        {
+                            return;
+                        }
+
+
+                        if (
+                            selected[0].Value.parent.id !=
+                            "POVSwitch"
+                        )
+                        {
+                            return;
+                        }
+
+
+                        if (
+                            index < 0 ||
+                            index >= povCharacterIds.Count
+                        )
+                        {
+                            return;
+                        }
+
+
+                        int sceneId =
+                            povCharacterIds[index];
+
+
+                        // Change ONLY the character ID.
+                        // Preserve this keyframe's view mode and any
+                        // stored Custom settings.
+                        string oldStoredValue =
+                            selected[0].Value.value as string;
+
+
+                        if (string.IsNullOrEmpty(oldStoredValue))
+                        {
+                            selected[0].Value.value =
+                                sceneId.ToString() + "|none|force1|mirror0";
+                        }
+                        else
+                        {
+                            string[] oldParts =
+                                oldStoredValue.Split('|');
+
+
+                            oldParts[0] =
+                                sceneId.ToString();
+
+
+                            selected[0].Value.value =
+                                string.Join("|", oldParts);
+                        }
+                    }
+                );
+
+
+                povDropdown.gameObject.SetActive(
+                    false
+                );
 
 
                 return;
@@ -1000,6 +816,276 @@ namespace TimelinePOVSwitchX
 
 
         }
+
+
+        // =========================================================
+        // CREATE CHARACTER DROPDOWN
+        //
+        // Built entirely from UnityEngine.UI components so the plugin does
+        // not depend on ComponentUtil merely to obtain a Dropdown template.
+        // =========================================================
+
+        private static Dropdown CreatePovDropdown(
+            Transform parent,
+            Text sourceText
+        )
+        {
+            if (parent == null || sourceText == null)
+                return null;
+
+
+            Font font = sourceText.font;
+
+            GameObject root =
+                new GameObject(
+                    "POVSwitchDropdown",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image),
+                    typeof(Dropdown)
+                );
+
+            RectTransform rootRect =
+                root.GetComponent<RectTransform>();
+
+            rootRect.SetParent(parent, false);
+            rootRect.anchorMin = Vector2.zero;
+            rootRect.anchorMax = Vector2.one;
+            rootRect.offsetMin = Vector2.zero;
+            rootRect.offsetMax = Vector2.zero;
+
+            Image rootImage = root.GetComponent<Image>();
+            rootImage.color = new Color(0.82f, 0.82f, 0.82f, 1f);
+
+            Dropdown dropdown = root.GetComponent<Dropdown>();
+            dropdown.targetGraphic = rootImage;
+
+
+            // Caption shown while the dropdown is closed.
+            GameObject labelObject =
+                new GameObject(
+                    "Label",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Text)
+                );
+
+            RectTransform labelRect =
+                labelObject.GetComponent<RectTransform>();
+
+            labelRect.SetParent(rootRect, false);
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = new Vector2(6f, 0f);
+            labelRect.offsetMax = new Vector2(-18f, 0f);
+
+            Text label = labelObject.GetComponent<Text>();
+            label.font = font;
+            label.fontSize = 14;
+            label.fontStyle = sourceText.fontStyle;
+            label.alignment = TextAnchor.MiddleLeft;
+            label.color = new Color(0.38f, 0.38f, 0.38f, 1f);
+            label.raycastTarget = false;
+            label.supportRichText = false;
+
+            dropdown.captionText = label;
+
+
+            // Small arrow so it is visually obvious that this is a dropdown.
+            GameObject arrowObject =
+                new GameObject(
+                    "Arrow",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Text)
+                );
+
+            RectTransform arrowRect =
+                arrowObject.GetComponent<RectTransform>();
+
+            arrowRect.SetParent(rootRect, false);
+            arrowRect.anchorMin = new Vector2(1f, 0f);
+            arrowRect.anchorMax = new Vector2(1f, 1f);
+            arrowRect.pivot = new Vector2(1f, 0.5f);
+            arrowRect.sizeDelta = new Vector2(18f, 0f);
+            arrowRect.anchoredPosition = Vector2.zero;
+
+            Text arrow = arrowObject.GetComponent<Text>();
+            arrow.font = font;
+            arrow.fontSize = 14;
+            arrow.alignment = TextAnchor.MiddleCenter;
+            arrow.color = new Color(0.38f, 0.38f, 0.38f, 1f);
+            arrow.text = "▼";
+            arrow.raycastTarget = false;
+
+
+            // Popup template.
+            GameObject templateObject =
+                new GameObject(
+                    "Template",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image),
+                    typeof(ScrollRect)
+                );
+
+            RectTransform templateRect =
+                templateObject.GetComponent<RectTransform>();
+
+            templateRect.SetParent(rootRect, false);
+            templateRect.anchorMin = new Vector2(0f, 0f);
+            templateRect.anchorMax = new Vector2(1f, 0f);
+            templateRect.pivot = new Vector2(0.5f, 1f);
+            templateRect.anchoredPosition = Vector2.zero;
+            templateRect.sizeDelta = new Vector2(0f, 160f);
+
+            Image templateImage = templateObject.GetComponent<Image>();
+            templateImage.color = new Color(0.82f, 0.82f, 0.82f, 1f);
+
+
+            // Viewport clips the option list to the popup rectangle.
+            GameObject viewportObject =
+                new GameObject(
+                    "Viewport",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image),
+                    typeof(RectMask2D)
+                );
+
+            RectTransform viewportRect =
+                viewportObject.GetComponent<RectTransform>();
+
+            viewportRect.SetParent(templateRect, false);
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.offsetMin = Vector2.zero;
+            viewportRect.offsetMax = Vector2.zero;
+
+            Image viewportImage = viewportObject.GetComponent<Image>();
+            viewportImage.color = new Color(1f, 1f, 1f, 0.001f);
+
+
+            // Content grows vertically as options are added.
+            GameObject contentObject =
+                new GameObject(
+                    "Content",
+                    typeof(RectTransform),
+                    typeof(VerticalLayoutGroup),
+                    typeof(ContentSizeFitter)
+                );
+
+            RectTransform contentRect =
+                contentObject.GetComponent<RectTransform>();
+
+            contentRect.SetParent(viewportRect, false);
+            contentRect.anchorMin = new Vector2(0f, 1f);
+            contentRect.anchorMax = new Vector2(1f, 1f);
+            contentRect.pivot = new Vector2(0.5f, 1f);
+            contentRect.anchoredPosition = Vector2.zero;
+            contentRect.sizeDelta = Vector2.zero;
+
+            VerticalLayoutGroup layout =
+                contentObject.GetComponent<VerticalLayoutGroup>();
+
+            layout.padding = new RectOffset(0, 0, 0, 0);
+            layout.spacing = 0f;
+            layout.childAlignment = TextAnchor.UpperLeft;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+
+            ContentSizeFitter fitter =
+                contentObject.GetComponent<ContentSizeFitter>();
+
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+
+            // One option template. Unity Dropdown clones this Toggle for every
+            // character entry.
+            GameObject itemObject =
+                new GameObject(
+                    "Item",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image),
+                    typeof(Toggle),
+                    typeof(LayoutElement)
+                );
+
+            RectTransform itemRect =
+                itemObject.GetComponent<RectTransform>();
+
+            itemRect.SetParent(contentRect, false);
+            itemRect.anchorMin = new Vector2(0f, 1f);
+            itemRect.anchorMax = new Vector2(1f, 1f);
+            itemRect.pivot = new Vector2(0.5f, 1f);
+            itemRect.sizeDelta = new Vector2(0f, 24f);
+
+            Image itemBackground = itemObject.GetComponent<Image>();
+            itemBackground.color = new Color(0.82f, 0.82f, 0.82f, 1f);
+
+            LayoutElement itemLayout = itemObject.GetComponent<LayoutElement>();
+            itemLayout.minHeight = 24f;
+            itemLayout.preferredHeight = 24f;
+            itemLayout.flexibleHeight = 0f;
+
+            Toggle itemToggle = itemObject.GetComponent<Toggle>();
+            itemToggle.targetGraphic = itemBackground;
+
+            ColorBlock toggleColors = itemToggle.colors;
+            toggleColors.normalColor = Color.white;
+            toggleColors.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
+            toggleColors.pressedColor = new Color(0.72f, 0.72f, 0.72f, 1f);
+            toggleColors.disabledColor = new Color(0.5f, 0.5f, 0.5f, 0.5f);
+            itemToggle.colors = toggleColors;
+
+
+            GameObject itemLabelObject =
+                new GameObject(
+                    "Item Label",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Text)
+                );
+
+            RectTransform itemLabelRect =
+                itemLabelObject.GetComponent<RectTransform>();
+
+            itemLabelRect.SetParent(itemRect, false);
+            itemLabelRect.anchorMin = Vector2.zero;
+            itemLabelRect.anchorMax = Vector2.one;
+            itemLabelRect.offsetMin = new Vector2(6f, 0f);
+            itemLabelRect.offsetMax = new Vector2(-6f, 0f);
+
+            Text itemLabel = itemLabelObject.GetComponent<Text>();
+            itemLabel.font = font;
+            itemLabel.fontSize = 14;
+            itemLabel.fontStyle = sourceText.fontStyle;
+            itemLabel.alignment = TextAnchor.MiddleLeft;
+            itemLabel.color = new Color(0.38f, 0.38f, 0.38f, 1f);
+            itemLabel.raycastTarget = false;
+            itemLabel.supportRichText = false;
+
+
+            ScrollRect scrollRect = templateObject.GetComponent<ScrollRect>();
+            scrollRect.content = contentRect;
+            scrollRect.viewport = viewportRect;
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+            dropdown.template = templateRect;
+            dropdown.itemText = itemLabel;
+
+            // Unity requires the template to be disabled until Show() clones it.
+            templateObject.SetActive(false);
+
+            return dropdown;
+        }
+
 
 
         // =========================================================
