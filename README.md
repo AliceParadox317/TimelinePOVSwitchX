@@ -24,7 +24,8 @@ It also includes optional **AzPlanarReflection** integration for spawning Dynami
 
 # Preview
 
-<img width="1686" height="975" alt="image" src="https://github.com/user-attachments/assets/2adc0a6e-355e-403c-88da-80a0cb594f9d" />
+<img width="1596" height="976" alt="image" src="https://github.com/user-attachments/assets/0d91e595-f0d1-4012-bd7b-a752e407fc42" />
+
 
 ---
 
