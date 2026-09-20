@@ -16,7 +16,7 @@ namespace TimelinePOVSwitchX
     [BepInPlugin(
         "com.Alice317.TimelinePOVSwitchX",
         "TimelinePOVSwitchX",
-        "1.1.0"
+        "1.1.1"
     )]
     [BepInProcess("CharaStudio")]
     public partial class TimelinePOVSwitchX : BaseUnityPlugin
@@ -33,6 +33,7 @@ namespace TimelinePOVSwitchX
         private static Timeline.Timeline _timeline;
 
         private static bool timelinePlaying = false;
+        private static bool timelinePaused = false;
         private static float previousPlaybackTime = -1f;
 
         // Persistent PerspectiveX recovery backup.

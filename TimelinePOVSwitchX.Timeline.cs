@@ -44,10 +44,28 @@ namespace TimelinePOVSwitchX
         [HarmonyPostfix]
         private static void TimelinePlayPostfix()
         {
+            bool resumedFromPause =
+                timelinePaused;
+
             timelinePlaying = true;
+            timelinePaused = false;
+
+            float currentPlaybackTime =
+                TimelineCompatibility.GetPlaybackTime();
+
+            // On resume, do not blindly restore the lock that existed when
+            // Pause was pressed. The user may have scrubbed elsewhere while
+            // paused, so rebuild POV state from the latest POV Switch
+            // keyframe at or before the CURRENT Timeline timestamp.
+            if (resumedFromPause)
+            {
+                ReapplyPovStateAtTime(
+                    currentPlaybackTime
+                );
+            }
 
             previousPlaybackTime =
-                TimelineCompatibility.GetPlaybackTime();
+                currentPlaybackTime;
         }
 
 
@@ -61,6 +79,12 @@ namespace TimelinePOVSwitchX
         private static void TimelinePausePostfix()
         {
             timelinePlaying = false;
+            timelinePaused = true;
+
+            // Pausing releases captured camera control immediately so the
+            // Studio camera can be moved/scrubbed normally while paused.
+            forceCapturedCameraDirection = false;
+            forceCapturedCameraPosition = false;
 
             previousPlaybackTime =
                 TimelineCompatibility.GetPlaybackTime();
@@ -77,6 +101,7 @@ namespace TimelinePOVSwitchX
         private static void TimelineStopPostfix()
         {
             timelinePlaying = false;
+            timelinePaused = false;
 
             previousPlaybackTime =
                 TimelineCompatibility.GetPlaybackTime();
@@ -117,7 +142,112 @@ namespace TimelinePOVSwitchX
 
             povSettingsSessionActive = false;
             timelinePlaying = false;
+            timelinePaused = false;
             previousPlaybackTime = -1f;
+        }
+
+
+
+        // =========================================================
+        // REBUILD POV STATE WHEN RESUMING AFTER PAUSE
+        // =========================================================
+
+        private static void ReapplyPovStateAtTime(
+            float currentPlaybackTime
+        )
+        {
+            if (_timeline == null)
+            {
+                _timeline =
+                    Singleton<Timeline.Timeline>.Instance;
+
+                if (_timeline == null)
+                    return;
+            }
+
+            // Start unlocked. If there is no POV Switch keyframe at or
+            // before the current timestamp, no old capture lock should return.
+            forceCapturedCameraDirection = false;
+            forceCapturedCameraPosition = false;
+
+            Dictionary<int, Interpolable> interpolables =
+                (Dictionary<int, Interpolable>)
+                _timeline.GetPrivate(
+                    "_interpolables"
+                );
+
+            Timeline.Keyframe applicableKeyframe =
+                null;
+
+            float applicableTime =
+                float.MinValue;
+
+            foreach (
+                Interpolable interpolable
+                in interpolables.Values
+            )
+            {
+                if (
+                    interpolable.id !=
+                    "POVSwitch"
+                )
+                {
+                    continue;
+                }
+
+                foreach (
+                    KeyValuePair<float, Timeline.Keyframe> pair
+                    in interpolable.keyframes
+                )
+                {
+                    if (
+                        pair.Key <= currentPlaybackTime &&
+                        pair.Key >= applicableTime
+                    )
+                    {
+                        applicableTime =
+                            pair.Key;
+
+                        applicableKeyframe =
+                            pair.Value;
+                    }
+                }
+            }
+
+            if (applicableKeyframe == null)
+                return;
+
+            string storedValue =
+                applicableKeyframe.value as string;
+
+            if (string.IsNullOrEmpty(storedValue))
+                return;
+
+            string[] storedParts =
+                storedValue.Split('|');
+
+            int sceneId;
+
+            if (
+                !int.TryParse(
+                    storedParts[0],
+                    out sceneId
+                )
+            )
+            {
+                return;
+            }
+
+            string viewMode =
+                storedParts.Length > 1
+                    ? storedParts[1]
+                    : "none";
+
+            SwitchPOV(
+                sceneId,
+                viewMode,
+                storedParts
+            );
         }
 
 
