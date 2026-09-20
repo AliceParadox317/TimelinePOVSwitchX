@@ -157,7 +157,98 @@ namespace TimelinePOVSwitchX
         // REBUILD POV STATE WHEN RESUMING AFTER PAUSE
         // =========================================================
 
-        private static void ReapplyPovStateAtTime(
+        private static void ReapplyPovStateAtTimeIfCharaMatches(
+            ChaControl enabledCharacter
+        )
+        {
+            try
+            {
+                if (enabledCharacter == null)
+                    return;
+
+                float currentPlaybackTime =
+                    TimelineCompatibility.GetPlaybackTime();
+
+                Timeline.Keyframe applicableKeyframe =
+                    GetApplicablePovKeyframeAtTime(
+                        currentPlaybackTime
+                    );
+
+                if (applicableKeyframe == null)
+                    return;
+
+                string storedValue =
+                    applicableKeyframe.value as string;
+
+                if (string.IsNullOrEmpty(storedValue))
+                    return;
+
+                string[] storedParts =
+                    storedValue.Split('|');
+
+                int timelineSceneId;
+
+                if (
+                    storedParts.Length == 0 ||
+                    !int.TryParse(
+                        storedParts[0],
+                        out timelineSceneId
+                    ) ||
+                    timelineSceneId < 0
+                )
+                {
+                    return;
+                }
+
+                ObjectCtrlInfo obj;
+
+                if (
+                    !Studio.Studio.Instance.dicObjectCtrl.TryGetValue(
+                        timelineSceneId,
+                        out obj
+                    )
+                )
+                {
+                    return;
+                }
+
+                OCIChar timelineCharacter =
+                    obj as OCIChar;
+
+                if (timelineCharacter == null)
+                    return;
+
+                // Exact identity match:
+                // PerspectiveX.chara is the ChaControl assigned by EnablePov().
+                // OCIChar.charInfo is that Studio character's ChaControl.
+                if (
+                    !object.ReferenceEquals(
+                        timelineCharacter.charInfo,
+                        enabledCharacter
+                    )
+                )
+                {
+                    return;
+                }
+
+                string viewMode =
+                    storedParts.Length > 1
+                        ? storedParts[1]
+                        : "none";
+
+                SwitchPOV(
+                    timelineSceneId,
+                    viewMode,
+                    storedParts
+                );
+            }
+            catch
+            {
+            }
+        }
+
+
+        private static Timeline.Keyframe GetApplicablePovKeyframeAtTime(
             float currentPlaybackTime
         )
         {
@@ -167,13 +258,8 @@ namespace TimelinePOVSwitchX
                     Singleton<Timeline.Timeline>.Instance;
 
                 if (_timeline == null)
-                    return;
+                    return null;
             }
-
-            // Start unlocked. If there is no POV Switch keyframe at or
-            // before the current timestamp, no old capture lock should return.
-            forceCapturedCameraDirection = false;
-            forceCapturedCameraPosition = false;
 
             Dictionary<int, Interpolable> interpolables =
                 (Dictionary<int, Interpolable>)
@@ -219,6 +305,25 @@ namespace TimelinePOVSwitchX
                 }
             }
 
+            return applicableKeyframe;
+        }
+
+
+
+        private static void ReapplyPovStateAtTime(
+            float currentPlaybackTime
+        )
+        {
+            // Start unlocked. If there is no POV Switch keyframe at or
+            // before the current timestamp, no old capture lock should return.
+            forceCapturedCameraDirection = false;
+            forceCapturedCameraPosition = false;
+
+            Timeline.Keyframe applicableKeyframe =
+                GetApplicablePovKeyframeAtTime(
+                    currentPlaybackTime
+                );
+
             if (applicableKeyframe == null)
                 return;
 
@@ -254,7 +359,6 @@ namespace TimelinePOVSwitchX
                 storedParts
             );
         }
-
 
 
         // =========================================================

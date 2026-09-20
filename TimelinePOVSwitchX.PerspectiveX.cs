@@ -962,6 +962,62 @@ namespace TimelinePOVSwitchX
 
 
 
+        private static void PerspectiveXDisablePovPrefix()
+        {
+            if (timelineCallingPerspectiveXLifecycle)
+                return;
+
+            // Manual PerspectiveX exit: release Timeline's transform ownership
+            // BEFORE PerspectiveX restores the normal Studio camera.
+            forceCapturedCameraDirection = false;
+            forceCapturedCameraPosition = false;
+        }
+
+
+
+        private static void PerspectiveXEnablePovPostfix(
+            object __instance
+        )
+        {
+            if (timelineCallingPerspectiveXLifecycle)
+                return;
+
+            try
+            {
+                if (__instance == null)
+                    return;
+
+                // PerspectiveX's actual EnablePov() stores the character it
+                // successfully entered as its private `chara` ChaControl field.
+                // Read that exact field AFTER EnablePov has completed instead
+                // of trying to infer the target from Workspace selection.
+                System.Reflection.FieldInfo charaField =
+                    __instance.GetType().GetField(
+                        "chara",
+                        System.Reflection.BindingFlags.NonPublic |
+                        System.Reflection.BindingFlags.Instance
+                    );
+
+                if (charaField == null)
+                    return;
+
+                ChaControl enabledCharacter =
+                    charaField.GetValue(__instance)
+                    as ChaControl;
+
+                if (enabledCharacter == null)
+                    return;
+
+                ReapplyPovStateAtTimeIfCharaMatches(
+                    enabledCharacter
+                );
+            }
+            catch
+            {
+            }
+        }
+
+
         private static void PerspectiveXCameraPreCullPostfix(
             Camera renderingCam
         )
@@ -969,6 +1025,91 @@ namespace TimelinePOVSwitchX
             ApplyForcedCameraLocks(
                 renderingCam
             );
+        }
+
+
+
+        private static void TryPatchPerspectiveXLifecycle(
+            Harmony harmony
+        )
+        {
+            if (harmony == null)
+                return;
+
+            try
+            {
+                BepInEx.PluginInfo pluginInfo;
+
+                if (
+                    !BepInEx.Bootstrap.Chainloader.PluginInfos.TryGetValue(
+                        "bucky.kk.perspectivex",
+                        out pluginInfo
+                    )
+                )
+                {
+                    return;
+                }
+
+                object plugin =
+                    pluginInfo.Instance;
+
+                if (plugin == null)
+                    return;
+
+                System.Type pluginType =
+                    plugin.GetType();
+
+                System.Reflection.MethodInfo disablePov =
+                    AccessTools.Method(
+                        pluginType,
+                        "DisablePov"
+                    );
+
+                System.Reflection.MethodInfo enablePov =
+                    AccessTools.Method(
+                        pluginType,
+                        "EnablePov"
+                    );
+
+                System.Reflection.MethodInfo disablePrefix =
+                    AccessTools.Method(
+                        typeof(TimelinePOVSwitchX),
+                        "PerspectiveXDisablePovPrefix"
+                    );
+
+                System.Reflection.MethodInfo enablePostfix =
+                    AccessTools.Method(
+                        typeof(TimelinePOVSwitchX),
+                        "PerspectiveXEnablePovPostfix"
+                    );
+
+                if (
+                    disablePov != null &&
+                    disablePrefix != null
+                )
+                {
+                    harmony.Patch(
+                        disablePov,
+                        new HarmonyMethod(disablePrefix),
+                        null
+                    );
+                }
+
+                if (
+                    enablePov != null &&
+                    enablePostfix != null
+                )
+                {
+                    harmony.Patch(
+                        enablePov,
+                        null,
+                        new HarmonyMethod(enablePostfix)
+                    );
+                }
+            }
+            catch
+            {
+            }
         }
 
 
@@ -1180,10 +1321,19 @@ namespace TimelinePOVSwitchX
 
                     if (disablePov != null)
                     {
-                        disablePov.Invoke(
-                            disablePlugin,
-                            null
-                        );
+                        timelineCallingPerspectiveXLifecycle = true;
+
+                        try
+                        {
+                            disablePov.Invoke(
+                                disablePlugin,
+                                null
+                            );
+                        }
+                        finally
+                        {
+                            timelineCallingPerspectiveXLifecycle = false;
+                        }
                     }
 
 
@@ -1335,10 +1485,19 @@ namespace TimelinePOVSwitchX
                         return;
 
 
-                    enablePov.Invoke(
-                        plugin,
-                        null
-                    );
+                    timelineCallingPerspectiveXLifecycle = true;
+
+                    try
+                    {
+                        enablePov.Invoke(
+                            plugin,
+                            null
+                        );
+                    }
+                    finally
+                    {
+                        timelineCallingPerspectiveXLifecycle = false;
+                    }
                 }
 
 

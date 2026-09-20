@@ -16,7 +16,7 @@ namespace TimelinePOVSwitchX
     [BepInPlugin(
         "com.Alice317.TimelinePOVSwitchX",
         "TimelinePOVSwitchX",
-        "1.1.1"
+        "1.1.2"
     )]
     [BepInProcess("CharaStudio")]
     public partial class TimelinePOVSwitchX : BaseUnityPlugin
@@ -28,6 +28,10 @@ namespace TimelinePOVSwitchX
 
         private static bool forceCapturedCameraPosition = false;
         private static Vector3 forcedCameraPosition = Vector3.zero;
+
+        // Prevent our EnablePov/DisablePov Harmony hooks from reacting to
+        // PerspectiveX calls that TimelinePOVSwitchX itself intentionally makes.
+        private static bool timelineCallingPerspectiveXLifecycle = false;
 
         private static TimelinePOVSwitchX pluginInstance;
         private static Timeline.Timeline _timeline;
@@ -241,6 +245,12 @@ namespace TimelinePOVSwitchX
             // which happens after ordinary LateUpdate. Patch that exact method
             // so our optional camera locks get the final word before rendering.
             TryPatchPerspectiveXCameraPreCull(
+                harmony
+            );
+
+            // Also observe PerspectiveX's real POV lifecycle. This is additive:
+            // the existing camera/render patch remains unchanged.
+            TryPatchPerspectiveXLifecycle(
                 harmony
             );
         }
