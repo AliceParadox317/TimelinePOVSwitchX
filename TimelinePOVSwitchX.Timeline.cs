@@ -20,43 +20,48 @@ namespace TimelinePOVSwitchX
         // TIMELINE PLAY
         // =========================================================
 
+        private static bool playCallWasAlreadyPlaying = false;
+
+
         [HarmonyPatch(typeof(Timeline.Timeline), "Play")]
         [HarmonyPrefix]
         private static void TimelinePlayPrefix()
         {
-            // A Play after Pause resumes the SAME Timeline POV session.
-            // Only a fresh session is allowed to take a new snapshot.
-            if (
-                !povSettingsSessionActive &&
-                TimelineContainsPerspectiveXSettingChanges()
-            )
-            {
-                if (CreatePerspectiveXBackup())
-                {
-                    povSettingsSessionActive = true;
-                }
-            }
+            // Capture Timeline's REAL state before Play() changes anything.
+            // Timeline.Play() calls Pause() internally when already playing.
+            playCallWasAlreadyPlaying =
+                Timeline.Timeline.isPlaying;
         }
-
 
 
         [HarmonyPatch(typeof(Timeline.Timeline), "Play")]
         [HarmonyPostfix]
         private static void TimelinePlayPostfix()
         {
+            float currentPlaybackTime =
+                TimelineCompatibility.GetPlaybackTime();
+
+            // If Play() began while Timeline was already playing, this call
+            // was only the Play-button's pause toggle. Pause() has already
+            // run and its postfix has already released the camera locks.
+            if (playCallWasAlreadyPlaying)
+            {
+                timelinePlaying = false;
+                timelinePaused = true;
+
+                previousPlaybackTime =
+                    currentPlaybackTime;
+
+                return;
+            }
+
+            // Otherwise this really was Start/Resume.
             bool resumedFromPause =
                 timelinePaused;
 
             timelinePlaying = true;
             timelinePaused = false;
 
-            float currentPlaybackTime =
-                TimelineCompatibility.GetPlaybackTime();
-
-            // On resume, do not blindly restore the lock that existed when
-            // Pause was pressed. The user may have scrubbed elsewhere while
-            // paused, so rebuild POV state from the latest POV Switch
-            // keyframe at or before the CURRENT Timeline timestamp.
             if (resumedFromPause)
             {
                 ReapplyPovStateAtTime(
@@ -295,6 +300,31 @@ namespace TimelinePOVSwitchX
                 currentPlaybackTime <= LOOP_EPSILON;
 
 
+            // When Timeline moves backwards, the keyframe we crossed is
+            // NOT necessarily the state that should remain active. Rebuild
+            // from the latest POV Switch keyframe at/before the destination.
+            //
+            // Example:
+            //   0.01s = Direction Lock ON
+            //   13.00s = another POV event
+            //   seek 15s -> 12s
+            // The correct state at 12s is the 0.01s keyframe, not the 13s one.
+            if (
+                !isLoopWrap &&
+                previousPlaybackTime > currentPlaybackTime
+            )
+            {
+                ReapplyPovStateAtTime(
+                    currentPlaybackTime
+                );
+
+                previousPlaybackTime =
+                    currentPlaybackTime;
+
+                return;
+            }
+
+
             if (!isLoopWrap)
             {
                 Dictionary<int, Interpolable> interpolables =
@@ -332,15 +362,7 @@ namespace TimelinePOVSwitchX
                             keyframeTime <= currentPlaybackTime;
 
 
-                        bool crossedBackward =
-                            previousPlaybackTime > keyframeTime &&
-                            keyframeTime >= currentPlaybackTime;
-
-
-                        if (
-                            !crossedForward &&
-                            !crossedBackward
-                        )
+                        if (!crossedForward)
                         {
                             continue;
                         }
