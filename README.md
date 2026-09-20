@@ -13,6 +13,7 @@ It also includes optional **AzPlanarReflection** integration for spawning Dynami
 - Disable PerspectiveX POV directly from a Timeline keyframe
 - Load PerspectiveX View Slots 1–3
 - Store custom PerspectiveX camera settings independently for each keyframe
+- Capture the current camera view per keyframe with independent Direction and Position locks
 - Automatically back up and restore your original PerspectiveX settings
 - Optional **Dynamic** and **Static** POV mirrors using AzPlanarReflection *(Beta / Work in Progress)*
 - Optional Studio `MIR/ROR` button for quickly spawning a permanent mirror in front of the current POV
