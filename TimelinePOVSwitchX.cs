@@ -16,7 +16,7 @@ namespace TimelinePOVSwitchX
     [BepInPlugin(
         "com.Alice317.TimelinePOVSwitchX",
         "TimelinePOVSwitchX",
-        "1.1.2"
+        "1.1.3"
     )]
     [BepInProcess("CharaStudio")]
     public partial class TimelinePOVSwitchX : BaseUnityPlugin

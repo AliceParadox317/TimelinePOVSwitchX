@@ -280,7 +280,8 @@ namespace TimelinePOVSwitchX
             {
                 if (
                     interpolable.id !=
-                    "POVSwitch"
+                    "POVSwitch" ||
+                    !interpolable.enabled
                 )
                 {
                     continue;
@@ -444,12 +445,13 @@ namespace TimelinePOVSwitchX
                 )
                 {
                     if (
-                        interpolable.id !=
-                        "POVSwitch"
-                    )
-                    {
-                        continue;
-                    }
+                    interpolable.id !=
+                    "POVSwitch" ||
+                    !interpolable.enabled
+                )
+                {
+                    continue;
+                }
 
 
                     foreach (
