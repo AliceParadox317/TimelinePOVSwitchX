@@ -119,7 +119,6 @@ namespace TimelinePOVSwitchX
             forceCapturedCameraPosition = false;
 
             RestorePerspectiveXBackupIfPending();
-            povSettingsSessionActive = false;
         }
 
 
@@ -145,7 +144,6 @@ namespace TimelinePOVSwitchX
 
             RestorePerspectiveXBackupIfPending();
 
-            povSettingsSessionActive = false;
             timelinePlaying = false;
             timelinePaused = false;
             previousPlaybackTime = -1f;

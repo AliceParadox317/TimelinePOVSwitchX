@@ -1,4 +1,4 @@
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using KKAPI.Utilities;
@@ -16,9 +16,10 @@ namespace TimelinePOVSwitchX
     [BepInPlugin(
         "com.Alice317.TimelinePOVSwitchX",
         "TimelinePOVSwitchX",
-        "1.1.3"
+        "1.2.0"
     )]
     [BepInProcess("CharaStudio")]
+    [DefaultExecutionOrder(32000)]
     public partial class TimelinePOVSwitchX : BaseUnityPlugin
     {
         // Camera-capture locks remain active until the next POV Switch event.
@@ -28,6 +29,23 @@ namespace TimelinePOVSwitchX
 
         private static bool forceCapturedCameraPosition = false;
         private static Vector3 forcedCameraPosition = Vector3.zero;
+
+        // Head Follow Camera is a render-time override only.
+        // We restore the animated head rotation immediately after the camera
+        // renders so PerspectiveX never uses our override as next frame's
+        // head pose / camera anchor.
+        private static bool headFollowCameraActive = false;
+        private static ChaControl headFollowCharacter = null;
+        private static Transform headFollowBone = null;
+        // Head Follow never writes p_cf_head_bone anymore.  A private pivot is
+        // inserted below it and only that pivot is rotated, so Timeline/Animator
+        // remains the sole writer of the original character animation hierarchy.
+        private static Transform headFollowPivot = null;
+        private static readonly List<Transform> headFollowPivotChildren = new List<Transform>();
+        // Head Follow has exactly one authoritative pivot write per Unity frame.
+        private static int headFollowLastAppliedFrame = -1;
+        private static float headFollowYawLimit = 50f;
+        private static float headFollowPitchLimit = 35f;
 
         // Prevent our EnablePov/DisablePov Harmony hooks from reacting to
         // PerspectiveX calls that TimelinePOVSwitchX itself intentionally makes.
@@ -42,7 +60,6 @@ namespace TimelinePOVSwitchX
 
         // Persistent PerspectiveX recovery backup.
         // This does NOT store or restore povEnabled.
-        private static bool povSettingsSessionActive = false;
 
         private static readonly string perspectiveXBackupPath =
             System.IO.Path.Combine(
@@ -58,7 +75,8 @@ namespace TimelinePOVSwitchX
 
         // Separate draggable settings window for the selected POV keyframe.
         private Rect povSettingsWindowRect =
-            new Rect(500f, 200f, 330f, 500f);
+            new Rect(500f, 200f, 350f, 620f);
+        private Vector2 povSettingsScrollPosition = Vector2.zero;
 
         // GUI.Window + GUI.DragWindow handle movement; OnGUI stores the
         // Rect returned by GUI.Window so the dragged position persists.
@@ -189,7 +207,6 @@ namespace TimelinePOVSwitchX
             // PerspectiveX settings, Pending=true remains in the backup CFG.
             // Restore those values now. POV enabled/disabled is untouched.
             RestorePerspectiveXBackupIfPending();
-            povSettingsSessionActive = false;
 
 
             if (
@@ -253,6 +270,7 @@ namespace TimelinePOVSwitchX
             TryPatchPerspectiveXLifecycle(
                 harmony
             );
+
         }
 
 
@@ -267,10 +285,13 @@ namespace TimelinePOVSwitchX
             forceCapturedCameraDirection = false;
             forceCapturedCameraPosition = false;
 
+
+            RestoreHeadFollowRotation();
+            ClearHeadFollowCamera();
+
             // Normal plugin/game shutdown: restore if possible.
             // A hard crash will skip this, and startup recovery handles it.
             RestorePerspectiveXBackupIfPending();
-            povSettingsSessionActive = false;
         }
 
 

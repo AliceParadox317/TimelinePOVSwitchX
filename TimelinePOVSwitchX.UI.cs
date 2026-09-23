@@ -1,4 +1,4 @@
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using KKAPI.Utilities;
@@ -1231,6 +1231,10 @@ namespace TimelinePOVSwitchX
 
         private void LateUpdate()
         {
+            // Reapply the visual head override at the same broad stage KKPE
+            // uses for dirty bone edits: after normal animation/update work.
+            ApplyHeadFollowCameraKKPEStyle();
+
             if (activePovMirror == null)
                 return;
 
@@ -1383,6 +1387,15 @@ namespace TimelinePOVSwitchX
             if (parts.Length < 1)
                 return;
 
+            // The settings list can become taller than the screen when Custom,
+            // Capture Current View, mirrors and Head Follow options are all visible.
+            // Keep every control reachable instead of clipping the bottom rows.
+            povSettingsScrollPosition = GUILayout.BeginScrollView(
+                povSettingsScrollPosition,
+                false,
+                true,
+                GUILayout.ExpandHeight(true)
+            );
 
             string viewMode =
                 parts.Length > 1
@@ -1440,6 +1453,62 @@ namespace TimelinePOVSwitchX
             bool isDisablePovKeyframe =
                 int.TryParse(parts[0], out selectedSceneId) &&
                 selectedSceneId == -1;
+
+
+            if (!isDisablePovKeyframe)
+            {
+                bool headFollowCamera =
+                    GetHeadFollowCamera(parts);
+
+                bool newHeadFollowCamera =
+                    GUILayout.Toggle(
+                        headFollowCamera,
+                        "User Controlled Head Rotation"
+                    );
+
+                if (
+                    newHeadFollowCamera !=
+                    headFollowCamera
+                )
+                {
+                    SetKeyframeHeadFollowCamera(
+                        selectedKeyframe,
+                        newHeadFollowCamera
+                    );
+
+                    parts =
+                        ((string)selectedKeyframe.value).Split('|');
+                    headFollowCamera = newHeadFollowCamera;
+                }
+
+                if (headFollowCamera)
+                {
+                    float hfYaw = GetHeadFollowYawLimit(parts);
+                    float hfPitch = GetHeadFollowPitchLimit(parts);
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("Left / Right Limit", GUILayout.Width(120f));
+                    float newYaw = GUILayout.HorizontalSlider(hfYaw, 5f, 89f, GUILayout.Width(78f));
+                    GUILayout.Label(newYaw.ToString("0") + "°", GUILayout.Width(36f));
+                    if (GUILayout.Button("Reset", GUILayout.Width(48f)))
+                        newYaw = 50f;
+                    GUILayout.EndHorizontal();
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("Up / Down Limit", GUILayout.Width(120f));
+                    float newPitch = GUILayout.HorizontalSlider(hfPitch, 5f, 80f, GUILayout.Width(78f));
+                    GUILayout.Label(newPitch.ToString("0") + "°", GUILayout.Width(36f));
+                    if (GUILayout.Button("Reset", GUILayout.Width(48f)))
+                        newPitch = 35f;
+                    GUILayout.EndHorizontal();
+
+                    if (Mathf.Abs(newYaw - hfYaw) > 0.01f || Mathf.Abs(newPitch - hfPitch) > 0.01f)
+                    {
+                        SetKeyframeHeadFollowLimits(selectedKeyframe, newYaw, newPitch);
+                        parts = ((string)selectedKeyframe.value).Split('|');
+                    }
+                }
+            }
 
 
             if (
@@ -1596,7 +1665,7 @@ namespace TimelinePOVSwitchX
 
                 if (
                     GUILayout.Button(
-                        "Capture Current View",
+                        "Capture Current Direction",
                         GUILayout.Width(205f)
                     )
                 )
@@ -1782,13 +1851,25 @@ namespace TimelinePOVSwitchX
                     "Force POV\n" +
                     "Yes: turn PerspectiveX POV on at this keyframe if it is off.\n" +
                     "No: skip this keyframe if PerspectiveX POV is not on.\n\n" +
+                    "View\n" +
+                    "Choose which PerspectiveX view/settings this keyframe will use.\n\n" +
+                    "Capture Current Direction\n" +
+                    "While in POV mode, capture the direction you are currently looking and save it to this keyframe.\n\n" +
+                    "User Controlled Head Rotation\n" +
+                    "Makes the character's head follow the direction you look while controlling the POV camera.\n\n" +
+                    "Spawn Mirror\n" +
+                    "Mirror functionality only appears if AzPlanarReflection is installed.\n" +
+                    "Spawns a temporary mirror for this POV keyframe. The mirror is deleted when this keyframe ends or is removed.\n" +
+                    "Dynamic: moves with the POV/head.\n" +
+                    "Static: spawns in front of the POV and stays there.\n" +
+                    "Mirror support is Beta and may not always work correctly.\n\n" +
                     "STOP = restore original PerspectiveX settings.\n" +
                     "New / loaded Studio scene = restore original PerspectiveX settings.\n" +
                     "Crash = restore pending backup on next startup.\n\n" +
                     "Backup file:\n" +
                     "BepInEx/config/TimelinePOVSwitch.Backup.cfg",
                     helpBoxStyle,
-                    GUILayout.Height(180f),
+                    GUILayout.Height(430f),
                     GUILayout.ExpandWidth(true)
                 );
             }
@@ -2184,6 +2265,7 @@ namespace TimelinePOVSwitchX
                 }
             }
 
+            GUILayout.EndScrollView();
         }
 
 
@@ -2329,6 +2411,49 @@ namespace TimelinePOVSwitchX
                 storedValue +
                 "|" +
                 (forcePov ? "force1" : "force0");
+        }
+
+
+
+        private static void SetKeyframeHeadFollowCamera(
+            Timeline.Keyframe keyframe,
+            bool enabled
+        )
+        {
+            string storedValue =
+                keyframe.value as string;
+
+            if (string.IsNullOrEmpty(storedValue))
+                return;
+
+            string[] parts =
+                storedValue.Split('|');
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (
+                    parts[i] == "headfollow0" ||
+                    parts[i] == "headfollow1"
+                )
+                {
+                    parts[i] =
+                        enabled
+                            ? "headfollow1"
+                            : "headfollow0";
+
+                    keyframe.value =
+                        string.Join("|", parts);
+
+                    return;
+                }
+            }
+
+            keyframe.value =
+                storedValue +
+                "|" +
+                (enabled
+                    ? "headfollow1"
+                    : "headfollow0");
         }
 
 
@@ -2815,11 +2940,58 @@ namespace TimelinePOVSwitchX
             string viewDirectionTag =
                 GetViewDirectionTag(parts);
 
+            string headFollowTag =
+                GetHeadFollowCamera(parts)
+                    ? "headfollow1"
+                    : "headfollow0";
+
+            string headFollowYawTag =
+                "hfyaw" + FloatText(GetHeadFollowYawLimit(parts));
+            string headFollowPitchTag =
+                "hfpitch" + FloatText(GetHeadFollowPitchLimit(parts));
+
             if (!string.IsNullOrEmpty(mirrorModeTag))
                 keyframe.value += "|" + mirrorModeTag;
 
             if (!string.IsNullOrEmpty(viewDirectionTag))
                 keyframe.value += "|" + viewDirectionTag;
+
+            keyframe.value += "|" + headFollowTag + "|" + headFollowYawTag + "|" + headFollowPitchTag;
+        }
+
+
+        private static void SetKeyframeHeadFollowLimits(
+            Timeline.Keyframe keyframe, float yawLimit, float pitchLimit)
+        {
+            string storedValue = keyframe.value as string;
+            if (string.IsNullOrEmpty(storedValue)) return;
+
+            string[] parts = storedValue.Split('|');
+            bool yawFound = false;
+            bool pitchFound = false;
+            string yawTag = "hfyaw" + FloatText(Mathf.Clamp(yawLimit, 5f, 89f));
+            string pitchTag = "hfpitch" + FloatText(Mathf.Clamp(pitchLimit, 5f, 80f));
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i].StartsWith("hfyaw", System.StringComparison.OrdinalIgnoreCase))
+                { parts[i] = yawTag; yawFound = true; }
+                else if (parts[i].StartsWith("hfpitch", System.StringComparison.OrdinalIgnoreCase))
+                { parts[i] = pitchTag; pitchFound = true; }
+            }
+
+            storedValue = string.Join("|", parts);
+            if (!yawFound) storedValue += "|" + yawTag;
+            if (!pitchFound) storedValue += "|" + pitchTag;
+            keyframe.value = storedValue;
+
+            // If this keyframe is currently driving Head Follow, update the live
+            // limits immediately without restarting POV or touching PerspectiveX.
+            if (headFollowCameraActive)
+            {
+                headFollowYawLimit = Mathf.Clamp(yawLimit, 5f, 89f);
+                headFollowPitchLimit = Mathf.Clamp(pitchLimit, 5f, 80f);
+            }
         }
 
 

@@ -1,4 +1,4 @@
-using BepInEx;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using KKAPI.Utilities;
@@ -962,6 +962,320 @@ namespace TimelinePOVSwitchX
 
 
 
+        private static bool GetHeadFollowCamera(
+            string[] parts
+        )
+        {
+            if (parts == null)
+                return false;
+
+            foreach (string part in parts)
+            {
+                if (part == "headfollow1")
+                    return true;
+
+                if (part == "headfollow0")
+                    return false;
+            }
+
+            return false;
+        }
+
+
+        private static float GetHeadFollowYawLimit(string[] parts)
+        {
+            if (parts != null) foreach (string part in parts)
+            {
+                if (part != null && part.StartsWith("hfyaw", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    float v;
+                    if (float.TryParse(part.Substring(5), NumberStyles.Float, CultureInfo.InvariantCulture, out v))
+                        return Mathf.Clamp(v, 5f, 89f);
+                }
+            }
+            return 50f;
+        }
+
+        private static float GetHeadFollowPitchLimit(string[] parts)
+        {
+            if (parts != null) foreach (string part in parts)
+            {
+                if (part != null && part.StartsWith("hfpitch", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    float v;
+                    if (float.TryParse(part.Substring(7), NumberStyles.Float, CultureInfo.InvariantCulture, out v))
+                        return Mathf.Clamp(v, 5f, 80f);
+                }
+            }
+            return 35f;
+        }
+
+        private static void RestoreHeadFollowRotation()
+        {
+            // No original animation bone is modified in pivot mode.
+        }
+
+
+        private static bool TryGetHeadFollowEyeMidpoint(ChaControl chara, out Vector3 midpoint)
+        {
+            midpoint = Vector3.zero;
+            if (chara == null || chara.objHeadBone == null)
+                return false;
+
+            try
+            {
+                var eyeLookCtrl = chara.eyeLookCtrl;
+                if (eyeLookCtrl != null && eyeLookCtrl.eyeLookScript != null)
+                {
+                    var eyeObjs = eyeLookCtrl.eyeLookScript.eyeObjs;
+                    if (eyeObjs != null && eyeObjs.Length >= 2 &&
+                        eyeObjs[0] != null && eyeObjs[1] != null &&
+                        eyeObjs[0].eyeTransform && eyeObjs[1].eyeTransform)
+                    {
+                        midpoint = Vector3.Lerp(
+                            eyeObjs[0].eyeTransform.position,
+                            eyeObjs[1].eyeTransform.position,
+                            0.5f
+                        );
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            Transform headT = chara.objHeadBone.transform;
+            midpoint = headT.position +
+                headT.rotation * new Vector3(0f, 0.06f, 0.08f);
+            return true;
+        }
+
+
+        private static bool CreateHeadFollowPivot(ChaControl chara, Transform sourceBone)
+        {
+            if (chara == null || sourceBone == null)
+                return false;
+
+            GameObject pivotObject = new GameObject(
+                "__TimelinePOVSwitchX_HeadFollowPivot"
+            );
+            pivotObject.hideFlags = HideFlags.HideAndDontSave;
+
+            Transform pivot = pivotObject.transform;
+            pivot.SetParent(sourceBone, false);
+            pivot.localPosition = Vector3.zero;
+            pivot.localRotation = Quaternion.identity;
+            pivot.localScale = Vector3.one;
+
+            // Move the existing visual/facial hierarchy under OUR transform while
+            // preserving every child's world transform. p_cf_head_bone itself keeps
+            // its original hierarchy/path and is never written by Head Follow.
+            List<Transform> children = new List<Transform>();
+            for (int i = 0; i < sourceBone.childCount; i++)
+            {
+                Transform child = sourceBone.GetChild(i);
+                if (child != null && child != pivot)
+                    children.Add(child);
+            }
+
+            headFollowPivotChildren.Clear();
+            for (int i = 0; i < children.Count; i++)
+            {
+                Transform child = children[i];
+                if (child == null)
+                    continue;
+
+                child.SetParent(pivot, true);
+                headFollowPivotChildren.Add(child);
+            }
+
+            headFollowPivot = pivot;
+            return true;
+        }
+
+
+        private static void ClearHeadFollowCamera()
+        {
+            // Restore the original hierarchy exactly.  The source animation bone was
+            // never changed, so disabling Head Follow does not need to restore a pose.
+            if (headFollowPivot != null)
+            {
+                headFollowPivot.localPosition = Vector3.zero;
+                headFollowPivot.localRotation = Quaternion.identity;
+                headFollowPivot.localScale = Vector3.one;
+
+                if (headFollowBone != null)
+                {
+                    for (int i = 0; i < headFollowPivotChildren.Count; i++)
+                    {
+                        Transform child = headFollowPivotChildren[i];
+                        if (child != null && child.parent == headFollowPivot)
+                            child.SetParent(headFollowBone, true);
+                    }
+                }
+
+                if (headFollowPivot.gameObject != null)
+                    UnityEngine.Object.DestroyImmediate(headFollowPivot.gameObject);
+            }
+
+            headFollowPivotChildren.Clear();
+            headFollowCameraActive = false;
+            headFollowCharacter = null;
+            headFollowBone = null;
+            headFollowPivot = null;
+            headFollowLastAppliedFrame = -1;
+        }
+
+
+        private static Transform FindHeadFollowBone(ChaControl chara)
+        {
+            if (chara == null) return null;
+            Transform[] all = chara.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < all.Length; i++)
+                if (all[i] != null && all[i].name == "p_cf_head_bone")
+                    return all[i];
+            return null;
+        }
+
+
+        private static void SetHeadFollowCamera(OCIChar target, bool enabled, float yawLimit, float pitchLimit)
+        {
+            if (!enabled || target == null || target.charInfo == null)
+            {
+                if (headFollowCameraActive || headFollowPivot != null)
+                    ClearHeadFollowCamera();
+                return;
+            }
+
+            Transform bone = FindHeadFollowBone(target.charInfo);
+            if (bone == null)
+            {
+                if (headFollowCameraActive || headFollowPivot != null)
+                    ClearHeadFollowCamera();
+                return;
+            }
+
+            headFollowYawLimit = Mathf.Clamp(yawLimit, 5f, 89f);
+            headFollowPitchLimit = Mathf.Clamp(pitchLimit, 5f, 80f);
+
+            // Re-evaluating the same Timeline POV keyframe changes no hierarchy and
+            // performs no restore/reapply cycle.
+            if (headFollowCameraActive &&
+                headFollowCharacter == target.charInfo &&
+                headFollowBone == bone &&
+                headFollowPivot != null)
+                return;
+
+            if (headFollowCameraActive || headFollowPivot != null)
+                ClearHeadFollowCamera();
+
+            headFollowCharacter = target.charInfo;
+            headFollowBone = bone;
+
+            if (!CreateHeadFollowPivot(target.charInfo, bone))
+            {
+                headFollowCharacter = null;
+                headFollowBone = null;
+                return;
+            }
+
+            headFollowLastAppliedFrame = -1;
+            headFollowCameraActive = true;
+        }
+
+
+        private static void ApplyHeadFollowCameraKKPEStyle()
+        {
+            if (!headFollowCameraActive || headFollowCharacter == null ||
+                headFollowBone == null || headFollowPivot == null) return;
+
+            if (headFollowLastAppliedFrame == Time.frameCount) return;
+            headFollowLastAppliedFrame = Time.frameCount;
+
+            Camera cam = Camera.main;
+            if (cam == null || headFollowCharacter.objHeadBone == null) return;
+
+            // Always begin from the neutral pivot.  This reveals the ONE pose that
+            // Timeline/Animator/facial systems produced this frame.  We never restore
+            // or rewrite any of their original bones.
+            headFollowPivot.localPosition = Vector3.zero;
+            headFollowPivot.localRotation = Quaternion.identity;
+            headFollowPivot.localScale = Vector3.one;
+
+            // Use the animated head/neck attachment joint as the rotation center.
+            // This keeps the visual head physically attached to the neck instead of
+            // orbiting around the eyes.  The animation bones remain read-only.
+            Transform attachmentAnchor = headFollowBone;
+            Transform scan = headFollowBone;
+            while (scan != null)
+            {
+                if (scan.name == "cf_j_head")
+                {
+                    attachmentAnchor = scan;
+                    break;
+                }
+                scan = scan.parent;
+            }
+
+            Transform headReference = headFollowCharacter.objHeadBone.transform;
+            Vector3 headForward = headReference.forward;
+
+            Quaternion observedRotation;
+            float liveYaw, livePitch, liveRoll;
+            if (CapturePerspectiveXViewDirection(out liveYaw, out livePitch, out liveRoll))
+                observedRotation = Quaternion.Euler(livePitch, liveYaw, liveRoll);
+            else
+                observedRotation = cam.transform.rotation;
+
+            Vector3 cameraForward = observedRotation * Vector3.forward;
+            if (headForward.sqrMagnitude < 0.000001f ||
+                cameraForward.sqrMagnitude < 0.000001f) return;
+
+            Vector3 localLook =
+                headReference.InverseTransformDirection(cameraForward.normalized);
+            float yaw = Mathf.Atan2(localLook.x, localLook.z) * Mathf.Rad2Deg;
+            float pitch = Mathf.Asin(
+                Mathf.Clamp(localLook.y, -1f, 1f)
+            ) * Mathf.Rad2Deg;
+
+            yaw = Mathf.Clamp(yaw, -headFollowYawLimit, headFollowYawLimit);
+            pitch = Mathf.Clamp(pitch, -headFollowPitchLimit, headFollowPitchLimit);
+
+            float yr = yaw * Mathf.Deg2Rad;
+            float pr = pitch * Mathf.Deg2Rad;
+            Vector3 limitedLocalLook = new Vector3(
+                Mathf.Sin(yr) * Mathf.Cos(pr),
+                Mathf.Sin(pr),
+                Mathf.Cos(yr) * Mathf.Cos(pr)
+            );
+            Vector3 limitedWorldLook =
+                headReference.TransformDirection(limitedLocalLook).normalized;
+
+            Quaternion correction =
+                Quaternion.FromToRotation(headForward, limitedWorldLook);
+
+            // Apply the final visual offset to OUR transform only.  Rotate the
+            // visual head hierarchy around cf_j_head (the animated head/neck
+            // attachment joint), so the base of the head stays connected to the
+            // neck.  We still never write cf_j_head, cf_j_neck, p_cf_head_bone,
+            // or any other Timeline/Animator-controlled transform.
+            Vector3 sourcePosition = headFollowBone.position;
+            Quaternion sourceRotation = headFollowBone.rotation;
+            Vector3 attachmentPoint = attachmentAnchor.position;
+            headFollowPivot.position =
+                attachmentPoint + correction * (sourcePosition - attachmentPoint);
+            headFollowPivot.rotation = correction * sourceRotation;
+        }
+
+
+        private static void ApplyHeadFollowCameraForRender(Camera renderingCamera)
+        {
+            // Head Follow owns only its private pivot in LateUpdate.
+            // No render callback writes a character pose.
+        }
+
+
         private static void PerspectiveXDisablePovPrefix()
         {
             if (timelineCallingPerspectiveXLifecycle)
@@ -971,6 +1285,7 @@ namespace TimelinePOVSwitchX
             // BEFORE PerspectiveX restores the normal Studio camera.
             forceCapturedCameraDirection = false;
             forceCapturedCameraPosition = false;
+            ClearHeadFollowCamera();
         }
 
 
@@ -1023,6 +1338,10 @@ namespace TimelinePOVSwitchX
         )
         {
             ApplyForcedCameraLocks(
+                renderingCam
+            );
+
+            ApplyHeadFollowCameraForRender(
                 renderingCam
             );
         }
@@ -1239,11 +1558,23 @@ namespace TimelinePOVSwitchX
             string viewDirectionTag =
                 GetViewDirectionTag(parts);
 
+            string headFollowTag =
+                GetHeadFollowCamera(parts)
+                    ? "headfollow1"
+                    : "headfollow0";
+
+            string headFollowYawTag =
+                "hfyaw" + FloatText(GetHeadFollowYawLimit(parts));
+            string headFollowPitchTag =
+                "hfpitch" + FloatText(GetHeadFollowPitchLimit(parts));
+
             if (!string.IsNullOrEmpty(mirrorModeTag))
                 keyframe.value += "|" + mirrorModeTag;
 
             if (!string.IsNullOrEmpty(viewDirectionTag))
                 keyframe.value += "|" + viewDirectionTag;
+
+            keyframe.value += "|" + headFollowTag + "|" + headFollowYawTag + "|" + headFollowPitchTag;
         }
 
 
@@ -1286,6 +1617,7 @@ namespace TimelinePOVSwitchX
                 // The previous keyframe's mirror lives only until the next
                 // POV keyframe is reached.
                 DeleteActivePovMirror();
+                ClearHeadFollowCamera();
 
 
                 // -1 is the special "Disable POV" Timeline action.
@@ -1572,6 +1904,13 @@ namespace TimelinePOVSwitchX
                     plugin,
                     pluginType,
                     storedParts
+                );
+
+                SetHeadFollowCamera(
+                    target,
+                    GetHeadFollowCamera(storedParts),
+                    GetHeadFollowYawLimit(storedParts),
+                    GetHeadFollowPitchLimit(storedParts)
                 );
 
 
