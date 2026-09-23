@@ -14,6 +14,7 @@ It also includes optional **AzPlanarReflection** integration for spawning Dynami
 - Load PerspectiveX View Slots 1–3
 - Store custom PerspectiveX camera settings independently for each keyframe
 - Capture the current camera view per keyframe with independent Direction and Position locks
+- Let the character’s head follow the direction you look while controlling the POV camera.
 - Automatically back up and restore your original PerspectiveX settings
 - Optional **Dynamic** and **Static** POV mirrors using AzPlanarReflection *(Beta / Work in Progress)*
 - Optional Studio `MIR/ROR` button for quickly spawning a permanent mirror in front of the current POV
@@ -24,7 +25,8 @@ It also includes optional **AzPlanarReflection** integration for spawning Dynami
 
 # Preview
 
-<img width="1610" height="992" alt="image" src="https://github.com/user-attachments/assets/f0e40cb6-9f98-4b51-99e7-4a4d48121bea" />
+<img width="1643" height="1091" alt="image" src="https://github.com/user-attachments/assets/55df2ff5-95e1-4910-ac6b-78e4c4ab55f7" />
+
 
 
 ---
